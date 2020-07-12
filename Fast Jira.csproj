@@ -16,6 +16,14 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Page Remove="ui\App.xaml" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ApplicationDefinition Include="ui\App.xaml" />
+  </ItemGroup>
+
+  <ItemGroup>
     <Resource Include="Images\file.png">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Resource>
