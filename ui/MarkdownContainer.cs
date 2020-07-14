@@ -6,7 +6,7 @@ using System.Windows.Input;
 
 namespace Fast_Jira.ui
 {
-    class MarkdownContainer : FlowDocumentScrollViewer
+    public class MarkdownContainer : FlowDocumentScrollViewer
     {
         public MarkdownContainer() : base()
         {

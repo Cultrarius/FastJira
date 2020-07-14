@@ -7,18 +7,18 @@ using System.Windows.Media;
 
 namespace Fast_Jira.ui
 {
-    public delegate void SearchResultSelectedEventHandler(string SelectedIssueKey);
+    public delegate void SearchResultSelectedEventHandler(string selectedIssueKey);
 
     /// <summary>
     /// Interaction logic for SearchWindow.xaml
     /// </summary>
-    public partial class SearchWindow : Window
+    public partial class SearchWindow
     {
         public event SearchResultSelectedEventHandler SearchResultSelected;
         public DataVault Vault { get; set; }
 
-        private int selectionIndex;
-        private bool changingResults;
+        private int _selectionIndex;
+        private bool _changingResults;
 
         public SearchWindow()
         {
@@ -28,6 +28,69 @@ namespace Fast_Jira.ui
             GotFocus += SearchWindow_GotFocus;
             SearchText.KeyUp += SearchText_KeyUp;
             ResultList.SelectionChanged += ResultList_SelectionChanged;
+            ResultList.MouseLeftButtonUp += ResultList_MouseLeftButtonUp;
+        }
+
+        private void ResultList_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+        {
+            if (sender != ResultList) return;
+            e.Handled = true;
+            ResultSelected();
+        }
+
+        private void SearchText_KeyUp(object sender, KeyEventArgs e)
+        {
+            e.Handled = true;
+            _changingResults = true;
+            switch (e.Key)
+            {
+                case Key.Escape:
+                    Hide();
+                    break;
+                case Key.Enter:
+                    ResultSelected();
+                    break;
+                case Key.Down:
+                    _selectionIndex++;
+                    ResultList.SelectedIndex = Math.Min(ResultList.Items.Count - 1, _selectionIndex);
+                    break;
+                case Key.Up:
+                    _selectionIndex--;
+                    ResultList.SelectedIndex = Math.Min(ResultList.Items.Count - 1, _selectionIndex);
+                    break;
+                default:
+                {
+                    // update results
+                    string text = SearchText.Text;
+                    var resultIssues = Vault.SearchIssues(text);
+
+                    if (resultIssues.Count == 0)
+                    {
+                        if (ResultList.Items.Count == 0)
+                        {
+                            ResultList.Visibility = Visibility.Collapsed;
+                            ResultEmptyText.Visibility = Visibility.Visible;
+                        }
+                    }
+                    else
+                    {
+                        ResultList.Items.Clear();
+                        ResultList.Visibility = Visibility.Visible;
+                        ResultEmptyText.Visibility = Visibility.Collapsed;
+
+                        for (int i = 0; i < resultIssues.Count && i < 12; i++)
+                        {
+                            Issue issue = resultIssues[i];
+                            string assigneeText = "(" + (issue.Assignee?.DisplayName ?? "Unassigned") + ")";
+                            ResultEntry entry = new ResultEntry(issue.Key, issue.Summary, assigneeText, Vault.GetWrappedImage(issue.Type?.IconUrl));
+                            ResultList.Items.Add(entry);
+                        }
+                        ResultList.SelectedIndex = Math.Min(resultIssues.Count - 1, _selectionIndex);
+                    }
+                    break;
+                }
+            }
+            _changingResults = false;
         }
 
         private void SearchWindow_GotFocus(object sender, RoutedEventArgs e)
@@ -41,9 +104,9 @@ namespace Fast_Jira.ui
         private void ResultList_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
             if (ResultList.SelectedIndex >= 0) {
-                selectionIndex = ResultList.SelectedIndex;
+                _selectionIndex = ResultList.SelectedIndex;
             }
-            if (!changingResults)
+            if (!_changingResults)
             {
                 ResultSelected();
             }
@@ -51,14 +114,10 @@ namespace Fast_Jira.ui
 
         private void ResultSelected()
         {
-            if (ResultList.Items.Count > 0)
+            if (ResultList.Items.Count > 0 && ResultList.SelectedItem is ResultEntry entry)
             {
-                ResultEntry entry = ResultList.SelectedItem as ResultEntry;
-                if (entry != null)
-                {
-                    SearchResultSelected?.Invoke(entry.IssueKey);
-                    Hide();
-                }
+                SearchResultSelected?.Invoke(entry.IssueKey);
+                Hide();
             }
         }
 
@@ -70,57 +129,6 @@ namespace Fast_Jira.ui
 
             SearchText.Focus();
             SearchText.SelectAll();
-        }
-
-        private void SearchText_KeyUp(object sender, KeyEventArgs e)
-        {
-            e.Handled = true;
-            changingResults = true;
-            if (e.Key == Key.Escape)
-            {
-                Hide();
-            }
-            else if (e.Key == Key.Enter)
-            {
-                ResultSelected();
-            }
-            else if (e.Key == Key.Down)
-            {
-                selectionIndex++;
-                ResultList.SelectedIndex = Math.Min(ResultList.Items.Count - 1, selectionIndex);
-            }
-            else if (e.Key == Key.Up)
-            {
-                selectionIndex--;
-                ResultList.SelectedIndex = Math.Min(ResultList.Items.Count - 1, selectionIndex);
-            }
-            else
-            {
-                // update results
-                string Text = SearchText.Text;
-                var resultIssues = Vault.SearchIssues(Text);
-                ResultList.Items.Clear();
-                if (resultIssues.Count == 0)
-                {
-                    ResultList.Visibility = Visibility.Collapsed;
-                    ResultEmptyText.Visibility = Visibility.Visible;
-                }
-                else
-                {
-                    ResultList.Visibility = Visibility.Visible;
-                    ResultEmptyText.Visibility = Visibility.Collapsed;
-
-                    for (int i = 0; i < resultIssues.Count && i < 12; i++)
-                    {
-                        Issue issue = resultIssues[i];
-                        string assigneeText = "(" + issue.Assignee?.DisplayName + " / " + issue.Reporter?.DisplayName + ")";
-                        ResultEntry Entry = new ResultEntry(issue.Key, issue.Summary, assigneeText, Vault.GetWrappedImage(issue.Type?.IconUrl));
-                        ResultList.Items.Add(Entry);
-                    }
-                    ResultList.SelectedIndex = Math.Min(resultIssues.Count - 1, selectionIndex);
-                }
-            }
-            changingResults = false;
         }
     }
 

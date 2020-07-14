@@ -1,23 +1,23 @@
-﻿using Fast_Jira.core;
-using System;
+﻿using System;
 using System.Windows;
+using Fast_Jira.core;
 
-namespace Fast_Jira
+namespace Fast_Jira.ui
 {
     /// <summary>
     /// Interaction logic for Settings.xaml
     /// </summary>
-    public partial class Settings : Window
+    public partial class Settings
     {
-        private Config appConfig;
+        private Config _appConfig;
         public Config AppConfig
         {
-            get { return appConfig; }
+            get => _appConfig;
             set {
-                appConfig = value;
-                jiraUrlInput.Text = value.JiraServer;
-                jiraUserInput.Text = value.JiraUser;
-                jiraPasswordInput.Password = value.JiraPassword;
+                _appConfig = value;
+                JiraUrlInput.Text = value.JiraServer;
+                JiraUserInput.Text = value.JiraUser;
+                JiraPasswordInput.Password = value.JiraPassword;
             } 
         }
 
@@ -27,8 +27,8 @@ namespace Fast_Jira
 
             Style = (Style)FindResource(typeof(Window));
 
-            cancelButton.Command = new RelayCommand(CancelSettingsCommand_Executed);
-            saveButton.Command = new RelayCommand(SaveSettingsCommand_CanExecute, SaveSettingsCommand_Executed);
+            CancelButton.Command = new RelayCommand(CancelSettingsCommand_Executed);
+            SaveButton.Command = new RelayCommand(SaveSettingsCommand_CanExecute, SaveSettingsCommand_Executed);
         }
 
         private void CancelSettingsCommand_Executed(object parameter)
@@ -38,15 +38,15 @@ namespace Fast_Jira
 
         private bool SaveSettingsCommand_CanExecute(object parameter)
         {
-            return !string.IsNullOrWhiteSpace(jiraUrlInput.Text) &&
-                    !string.IsNullOrWhiteSpace(jiraUserInput.Text);
+            return !string.IsNullOrWhiteSpace(JiraUrlInput.Text) &&
+                    !string.IsNullOrWhiteSpace(JiraUserInput.Text);
         }
 
         private void SaveSettingsCommand_Executed(object parameter)
         {
-            AppConfig.JiraServer = jiraUrlInput.Text;
-            AppConfig.JiraUser = jiraUserInput.Text;
-            AppConfig.JiraPassword = jiraPasswordInput.Password;
+            AppConfig.JiraServer = JiraUrlInput.Text;
+            AppConfig.JiraUser = JiraUserInput.Text;
+            AppConfig.JiraPassword = JiraPasswordInput.Password;
 
             try
             {

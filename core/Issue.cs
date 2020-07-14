@@ -27,7 +27,7 @@ namespace Fast_Jira.core
 
 
         /// <summary>Internal Jira ID</summary>
-        public string ID { get; set; }
+        public string Id { get; set; }
 
         /// <summary>Issue key as shown in the browser</summary>
         public string Key { get; set; }
@@ -45,7 +45,7 @@ namespace Fast_Jira.core
         public DateTime Created { get; set; }
 
         public List<string> IssueLinks { get; set; }
-        
+
         public List<string> Subtasks { get; set; }
 
         public List<Comment> Comments { get; set; }
@@ -66,31 +66,31 @@ namespace Fast_Jira.core
 
         public Dictionary<string, string> CustomFields { get; set; }
 
-        public static Issue FromBean(IssueBean Bean)
+        public static Issue FromBean(IssueBean bean)
         {
-            if (Bean == null)
+            if (bean == null)
             {
                 return null;
             }
-            
-            JObject resolution = (JObject)Bean.Fields["resolution"];
-            JObject assignee = (JObject)Bean.Fields["assignee"];
-            JObject reporter = (JObject)Bean.Fields["reporter"];
-            JObject issuetype = (JObject)Bean.Fields["issuetype"];
-            JObject status = (JObject)Bean.Fields["status"];
-            JObject comment = (JObject)Bean.Fields["comment"];
-            JObject priority = (JObject)Bean.Fields["priority"];
-            JObject project = (JObject)Bean.Fields["project"];
-            JArray attachment = (JArray)Bean.Fields["attachment"];
-            DateTime updated = (DateTime)Bean.Fields["updated"];
-            DateTime created = (DateTime)Bean.Fields["created"];
-            string description = (string)Bean.Fields["description"];
-            string summary = (string)Bean.Fields["summary"];
+
+            JObject resolution = (JObject)bean.Fields["resolution"];
+            JObject assignee = (JObject)bean.Fields["assignee"];
+            JObject reporter = (JObject)bean.Fields["reporter"];
+            JObject issuetype = (JObject)bean.Fields["issuetype"];
+            JObject status = (JObject)bean.Fields["status"];
+            JObject comment = (JObject)bean.Fields["comment"];
+            JObject priority = (JObject)bean.Fields["priority"];
+            JObject project = (JObject)bean.Fields["project"];
+            JArray attachment = (JArray)bean.Fields["attachment"];
+            DateTime updated = (DateTime)bean.Fields["updated"];
+            DateTime created = (DateTime)bean.Fields["created"];
+            string description = (string)bean.Fields["description"];
+            string summary = (string)bean.Fields["summary"];
 
             Issue issue = new Issue()
             {
-                ID = Bean.Id,
-                Key = Bean.Key,
+                Id = bean.Id,
+                Key = bean.Key,
                 Description = FixMarkdown(description),
                 Summary = summary,
                 Created = created,
@@ -109,49 +109,46 @@ namespace Fast_Jira.core
             issue.Attachments = new List<Attachment>();
             foreach (JToken attachmentField in attachment)
             {
-                Attachment NewAttachment = new Attachment(attachmentField);
-                issue.Attachments.Add(NewAttachment);
+                Attachment newAttachment = new Attachment(attachmentField);
+                issue.Attachments.Add(newAttachment);
             }
 
-            JArray CommentList = comment?.Value<JArray>("comments");
-            if (CommentList != null)
+            JArray commentList = comment?.Value<JArray>("comments");
+            if (commentList != null)
             {
                 issue.Comments = new List<Comment>();
-                foreach (JToken commentField in CommentList)
+                foreach (JToken commentField in commentList)
                 {
-                    Comment NewComment = new Comment(commentField);
-                    NewComment.Body = FixMarkdown(NewComment.Body);
-                    issue.Comments.Add(NewComment);
+                    Comment newComment = new Comment(commentField);
+                    newComment.Body = FixMarkdown(newComment.Body);
+                    issue.Comments.Add(newComment);
                 }
             }
 
             return issue;
         }
 
-        private static string FixMarkdown(string Markdown)
+        private static string FixMarkdown(string markdown)
         {
             // jira markdown is a piece of shit that doesn't adhere to any common specification
-            if (string.IsNullOrWhiteSpace(Markdown))
+            if (string.IsNullOrWhiteSpace(markdown))
             {
                 return "";
             }
-            string Fixed = Regex.Replace(Markdown, @"\[([^|]+)\|([^|]+)\]", delegate (Match match) {
-                // fix links
-                return "[" + match.Groups[1] + "](" + match.Groups[2] + ")";
-            });
-            Fixed = Regex.Replace(Fixed, @"([#*]+) ", delegate (Match match)
+            string fixedMarkdown = Regex.Replace(markdown, @"\[([^|]+)\|([^|]+)\]", match => "[" + match.Groups[1] + "](" + match.Groups[2] + ")");
+            fixedMarkdown = Regex.Replace(fixedMarkdown, @"([#*]+) ", delegate (Match match)
             {
                 // fix lists
                 string m = match.Groups[1].Value;
-                return String.Concat(Enumerable.Repeat("    ", m.Length - 1)) + (m[^1] == '#' ? "1." : "*")  + " ";
+                return string.Concat(Enumerable.Repeat("    ", m.Length - 1)) + (m[^1] == '#' ? "1." : "*") + " ";
             });
-            Fixed = Regex.Replace(Fixed, @"\.h([123456]) ", delegate (Match match)
+            fixedMarkdown = Regex.Replace(fixedMarkdown, @"\.h([123456]) ", delegate (Match match)
             {
                 // fix headings
                 int count = int.Parse(match.Groups[1].Value);
                 return new string('#', count) + " ";
             });
-            return Fixed;
+            return fixedMarkdown;
         }
 
         public string ToFulltextDocument()
@@ -176,14 +173,13 @@ namespace Fast_Jira.core
 
         public Person(JObject input)
         {
-            if (input != null)
-            {
-                Key = input.Value<string>("key");
-                Name = input.Value<string>("name");
-                Email = input.Value<string>("emailAddress");
-                DisplayName = input.Value<string>("displayName");
-                AvatarUrl = input.Value<JObject>("avatarUrls").Value<string>("48x48");
-            }
+            if (input == null) return;
+
+            Key = input.Value<string>("key");
+            Name = input.Value<string>("name");
+            Email = input.Value<string>("emailAddress");
+            DisplayName = input.Value<string>("displayName");
+            AvatarUrl = input.Value<JObject>("avatarUrls").Value<string>("48x48");
         }
 
         public string Name { get; set; }
@@ -203,22 +199,21 @@ namespace Fast_Jira.core
 
         public IssueType(JObject input)
         {
-            if (input != null)
-            {
-                ID = input.Value<string>("id");
-                Name = input.Value<string>("name");
-                IconUrl = input.Value<string>("iconUrl");
-                IconID = input.Value<int>("avatarId");
-            }
+            if (input == null) return;
+
+            Id = input.Value<string>("id");
+            Name = input.Value<string>("name");
+            IconUrl = input.Value<string>("iconUrl");
+            IconId = input.Value<int>("avatarId");
         }
 
-        public string ID { get; set; }
+        public string Id { get; set; }
 
         public string Name { get; set; }
 
         public string IconUrl { get; set; }
 
-        public int IconID { get; set; }
+        public int IconId { get; set; }
     }
 
     public class IssueStatus
@@ -227,15 +222,14 @@ namespace Fast_Jira.core
 
         public IssueStatus(JObject input)
         {
-            if (input != null)
-            {
-                ID = input.Value<string>("id");
-                Name = input.Value<string>("name");
-                Color = input.Value<JObject>("statusCategory").Value<string>("colorName");
-            }
+            if (input == null) return;
+
+            Id = input.Value<string>("id");
+            Name = input.Value<string>("name");
+            Color = input.Value<JObject>("statusCategory").Value<string>("colorName");
         }
 
-        public string ID { get; set; }
+        public string Id { get; set; }
 
         public string Name { get; set; }
 
@@ -250,14 +244,14 @@ namespace Fast_Jira.core
         {
             if (input != null)
             {
-                ID = input.Value<string>("id");
+                Id = input.Value<string>("id");
                 Name = input.Value<string>("name");
                 Key = input.Value<string>("key");
                 AvatarUrl = input.Value<JObject>("avatarUrls").Value<string>("48x48");
             }
         }
 
-        public string ID { get; set; }
+        public string Id { get; set; }
 
         public string Name { get; set; }
 
@@ -272,13 +266,13 @@ namespace Fast_Jira.core
 
         public Comment(JToken input)
         {
-            ID = input.Value<string>("id");
+            Id = input.Value<string>("id");
             Body = input.Value<string>("body");
             Created = input.Value<DateTime>("created");
             Author = new Person(input.Value<JObject>("author"));
         }
 
-        public string ID { get; set; }
+        public string Id { get; set; }
 
         public Person Author { get; set; }
 
@@ -295,7 +289,7 @@ namespace Fast_Jira.core
         {
             if (input != null)
             {
-                ID = input.Value<string>("id");
+                Id = input.Value<string>("id");
                 FileName = input.Value<string>("filename");
                 Content = input.Value<string>("content");
                 Thumbnail = input.Value<string>("thumbnail");
@@ -305,7 +299,7 @@ namespace Fast_Jira.core
             }
         }
 
-        public string ID { get; set; }
+        public string Id { get; set; }
 
         public Person Author { get; set; }
 

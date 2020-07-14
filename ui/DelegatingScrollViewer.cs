@@ -6,7 +6,7 @@ using System.Windows.Input;
 
 namespace Fast_Jira.ui
 {
-    class DelegatingScrollViewer : ScrollViewer
+    public class DelegatingScrollViewer : ScrollViewer
     {
         public DelegatingScrollViewer() : base()
         {

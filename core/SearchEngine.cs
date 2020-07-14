@@ -1,32 +1,34 @@
 ﻿using Lifti;
 using System.Collections.Generic;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 
 namespace Fast_Jira.core
 {
-    class SearchEngine
+    public class SearchEngine
     {
-        private readonly FullTextIndex<string> SearchIndex;
+        private readonly FullTextIndex<string> _searchIndex;
 
         public SearchEngine()
         {
-            SearchIndex = new FullTextIndexBuilder<string>().Build();
+            _searchIndex = new FullTextIndexBuilder<string>().Build();
         }
 
-        public async ValueTask AddToIndex(string IssueID, string Text)
+        public async ValueTask AddToIndex(string issueId, string text)
         {
-            if (SearchIndex.IdLookup.Contains(IssueID))
+            if (_searchIndex.IdLookup.Contains(issueId))
             {
-                await SearchIndex.RemoveAsync(IssueID);
+                await _searchIndex.RemoveAsync(issueId);
             }
-            await SearchIndex.AddAsync(IssueID, Text);
+            await _searchIndex.AddAsync(issueId, text);
         }
 
-        public List<SearchResult<string>> Search(string SearchText)
+        public List<SearchResult<string>> Search(string searchText)
         {
-            var Result = new List<SearchResult<string>>(SearchIndex.Search(SearchText));
-            Result.Sort((A, B) => A.FieldMatches.Count.CompareTo(B.FieldMatches.Count));
-            return Result;
+            string modifiedText = Regex.Replace(searchText.Trim(), @"(\S+)", "$1*");
+            var result = new List<SearchResult<string>>(_searchIndex.Search(modifiedText));
+            result.Sort((a, b) => a.FieldMatches.Count.CompareTo(b.FieldMatches.Count));
+            return result;
         }
     }
 }

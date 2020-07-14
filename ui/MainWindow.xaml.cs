@@ -1,13 +1,7 @@
-﻿using Fast_Jira.api;
-using Fast_Jira.core;
-using Fast_Jira.ui;
-using Lifti;
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
-using System.Drawing.Imaging;
-using System.IO;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Windows;
@@ -15,8 +9,10 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using Fast_Jira.api;
+using Fast_Jira.core;
 
-namespace Fast_Jira
+namespace Fast_Jira.ui
 {
     public static class Constants
     {
@@ -28,62 +24,62 @@ namespace Fast_Jira
     /// </summary>
     public partial class MainWindow : Window
     {
-        private static readonly NLog.Logger logger = NLog.LogManager.GetCurrentClassLogger();
-        private readonly DataVault Vault = new DataVault();
-        private SearchWindow SearchWindow;
-        private readonly Config AppConfig = new Config();
-        private int UpdateTicker = 0;
-        private bool SelectionActive = true;
+        private static readonly NLog.Logger Logger = NLog.LogManager.GetCurrentClassLogger();
+        private readonly DataVault _vault = new DataVault();
+        private SearchWindow _searchWindow;
+        private readonly Config _appConfig = new Config();
+        private int _updateTicker = 0;
+        private bool _selectionActive = true;
 
         public MainWindow()
         {
-            Vault.InitFromDisk();
+            _vault.InitFromDisk();
             ConfigureClient();
 
             InitializeComponent();
-            ConfigureUI();
+            ConfigureUi();
 
             RefreshDisplayedIssue();
-            UrlTextbox.Text = Vault.DisplayedIssue?.Key;
+            UrlTextbox.Text = _vault.DisplayedIssue?.Key ?? "";
 
-            Thread Watchdog = new Thread(WatchClipboard)
+            Thread watchdog = new Thread(WatchClipboard)
             {
                 IsBackground = true,
                 Priority = ThreadPriority.Lowest
             };
-            if (Watchdog.TrySetApartmentState(ApartmentState.STA))
+            if (watchdog.TrySetApartmentState(ApartmentState.STA))
             {
-                Watchdog.Start();
+                watchdog.Start();
             }
             else
             {
-                logger.Error("Unable to set thread state for clipboard watcher");
+                Logger.Error("Unable to set thread state for clipboard watcher");
             }
 
-            logger.Debug("Application startup done.");
+            Logger.Debug("Application startup done.");
         }
 
         private void RefreshIssueHistory()
         {
             HistoryList.Items.Clear();
             int k = 1;
-            foreach (Issue Item in Vault.GetAllIssuesSorted())
+            foreach (Issue item in _vault.GetAllIssuesSorted())
             {
-                string Hotkey = k <= 9 ? "(" + k + ")" : "";
+                string hotkey = k <= 9 ? "(" + k + ")" : "";
                 k++;
-                HistoryEntry Entry = new HistoryEntry(Hotkey, Item.Key, Item.Summary, Vault.GetWrappedImage(Item.Type.IconUrl));
-                HistoryList.Items.Add(Entry);
+                HistoryEntry entry = new HistoryEntry(hotkey, item.Key, item.Summary, _vault.GetWrappedImage(item.Type.IconUrl));
+                HistoryList.Items.Add(entry);
 
-                if (Item.Key == Vault.DisplayedIssue.Key)
+                if (item.Key == _vault.DisplayedIssue.Key)
                 {
-                    SelectionActive = false;
-                    HistoryList.SelectedItem = Entry;
-                    SelectionActive = true;
+                    _selectionActive = false;
+                    HistoryList.SelectedItem = entry;
+                    _selectionActive = true;
                 }
             }
         }
 
-        private void ConfigureUI()
+        private void ConfigureUi()
         {
             Style = (Style)FindResource(typeof(Window));
             ProgressBar.IsIndeterminate = false;
@@ -107,18 +103,18 @@ namespace Fast_Jira
         {
             if (e.Delta != 0)
             {
-                double CurrentOffset = DescriptionScrollView.VerticalOffset;
-                double TargetScroll = Math.Clamp(CurrentOffset - e.Delta, 0, DescriptionScrollView.ScrollableHeight);
-                DescriptionScrollView.ScrollToVerticalOffset(TargetScroll);
+                double currentOffset = DescriptionScrollView.VerticalOffset;
+                double targetScroll = Math.Clamp(currentOffset - e.Delta, 0, DescriptionScrollView.ScrollableHeight);
+                DescriptionScrollView.ScrollToVerticalOffset(targetScroll);
                 e.Handled = true;
             }
         }
 
         private void DescriptionScrollView_ScrollChanged(object sender, ScrollChangedEventArgs e)
         {
-            if (Vault.DisplayedIssue != null)
+            if (_vault.DisplayedIssue != null)
             {
-                Vault.DisplayedIssue.DescriptionScrollPosition = e.VerticalOffset;
+                _vault.DisplayedIssue.DescriptionScrollPosition = e.VerticalOffset;
             }
         }
 
@@ -126,23 +122,23 @@ namespace Fast_Jira
         {
             if (e.Key == Key.V && (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control && Clipboard.ContainsText())
             {
-                string Content = Clipboard.GetText().Trim();
-                UrlTextbox.Text = Content;
+                string content = Clipboard.GetText().Trim();
+                UrlTextbox.Text = content;
                 UrlTextCommitted();
                 e.Handled = true;
             }
             if (e.Key == Key.F && (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control)
             {
-                if (SearchWindow == null)
+                if (_searchWindow == null)
                 {
-                    SearchWindow = new SearchWindow()
+                    _searchWindow = new SearchWindow()
                     {
-                        Vault = Vault,
+                        Vault = _vault,
                         Owner = this
                     };
-                    SearchWindow.SearchResultSelected += SearchWindow_SearchResultSelected;
+                    _searchWindow.SearchResultSelected += SearchWindow_SearchResultSelected;
                 }
-                SearchWindow.Display();
+                _searchWindow.Display();
                 e.Handled = true;
             }
 
@@ -155,61 +151,60 @@ namespace Fast_Jira
                 }
             }
 
-            if (e.Key == Key.F5 && Vault.DisplayedIssue?.Key != null)
+            if (e.Key == Key.F5 && _vault.DisplayedIssue?.Key != null)
             {
-                IssueDisplayRequested(Vault.DisplayedIssue?.Key, true);
+                IssueDisplayRequested(_vault.DisplayedIssue?.Key, true);
             }
         }
 
-        private void SearchWindow_SearchResultSelected(string SelectedIssueKey)
+        private void SearchWindow_SearchResultSelected(string selectedIssueKey)
         {
-            if (Vault.HasIssueCached(SelectedIssueKey))
-            {
-                Vault.DisplayedIssue = Vault.GetCachedIssue(SelectedIssueKey);
-                RefreshDisplayedIssue();
-                Focus();
-            }
+            if (!_vault.HasIssueCached(selectedIssueKey)) return;
+            _vault.DisplayedIssue = _vault.GetCachedIssue(selectedIssueKey);
+            UrlTextbox.Text = selectedIssueKey;
+            RefreshDisplayedIssue();
+            Focus();
         }
 
         private void HistoryList_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
             e.Handled = true;
-            if (e.AddedItems.Count == 1 && SelectionActive)
+            if (e.AddedItems.Count == 1 && _selectionActive)
             {
-                HistoryEntry Selected = e.AddedItems[0] as HistoryEntry;
-                if (Selected.IssueKey != Vault.DisplayedIssue?.Key)
+                HistoryEntry selected = e.AddedItems[0] as HistoryEntry;
+                if (selected.IssueKey != _vault.DisplayedIssue?.Key)
                 {
-                    UrlTextbox.Text = Selected.IssueKey;
-                    IssueDisplayRequested(Selected.IssueKey);
+                    UrlTextbox.Text = selected.IssueKey;
+                    IssueDisplayRequested(selected.IssueKey);
                 }
             }
         }
 
         private void ConfigureClient()
         {
-            ClientCredentials Credentials = Vault.JiraAPI.Credentials as ClientCredentials;
-            Credentials.Username = AppConfig.JiraUser;
-            Credentials.Password = AppConfig.JiraPassword;
-            Vault.JiraAPI.BaseUri = new Uri(AppConfig.JiraServer);
+            ClientCredentials credentials = _vault.JiraApi.Credentials as ClientCredentials;
+            credentials.Username = _appConfig.JiraUser;
+            credentials.Password = _appConfig.JiraPassword;
+            _vault.JiraApi.BaseUri = new Uri(_appConfig.JiraServer);
         }
 
-        private string FormatTime(DateTime? Input)
+        private string FormatTime(DateTime? input)
         {
-            if (!Input.HasValue)
+            if (!input.HasValue)
             {
                 return "";
             }
-            DateTime Time = Input.Value;
-            string TimeString = Time.ToLocalTime().ToString(Constants.DateTimeUiFormat);
-            double DaysAgo = DateTime.Now.Subtract(Time).TotalDays;
-            string DaysAgoString = DaysAgo <= 1 ? "today" : Math.Floor(DaysAgo) + " days ago";
-            return TimeString + " (" + DaysAgoString + ")";
+            DateTime time = input.Value;
+            string timeString = time.ToLocalTime().ToString(Constants.DateTimeUiFormat);
+            double daysAgo = DateTime.Now.Subtract(time).TotalDays;
+            string daysAgoString = daysAgo <= 1 ? "today" : Math.Floor(daysAgo) + " days ago";
+            return timeString + " (" + daysAgoString + ")";
         }
 
         private void RefreshComments()
         {
-            List<Comment> Comments = Vault.DisplayedIssue?.Comments;
-            if (Comments == null || Comments.Count == 0)
+            List<Comment> comments = _vault.DisplayedIssue?.Comments;
+            if (comments == null || comments.Count == 0)
             {
                 CommentPanel.Visibility = Visibility.Collapsed;
             }
@@ -217,56 +212,56 @@ namespace Fast_Jira
             {
                 CommentPanel.Visibility = Visibility.Visible;
                 CommentList.Items.Clear();
-                foreach (Comment Comment in Comments)
+                foreach (Comment comment in comments)
                 {
-                    CommentDetails Details = new CommentDetails
+                    CommentDetails details = new CommentDetails
                     {
-                        AuthorName = Comment.Author?.DisplayName,
-                        Body = Comment.Body,
-                        Created = FormatTime(Comment.Created),
-                        AuthorIcon = Vault.GetWrappedImage(Comment.Author?.AvatarUrl)
+                        AuthorName = comment.Author?.DisplayName,
+                        Body = comment.Body,
+                        Created = FormatTime(comment.Created),
+                        AuthorIcon = _vault.GetWrappedImage(comment.Author?.AvatarUrl)
                     };
-                    CommentList.Items.Add(Details);
+                    CommentList.Items.Add(details);
                 }
             }
         }
 
         public void RefreshDisplayedIssue()
         {
-            Stopwatch Watch = Stopwatch.StartNew();
+            Stopwatch watch = Stopwatch.StartNew();
 
-            DetailsStatus.Text = Vault.DisplayedIssue?.Status?.Name;
-            DetailsStatus.Background = GetStatusColor(Vault.DisplayedIssue?.Status?.Color);
-            DetailsPriority.Text = Vault.DisplayedIssue?.Priority?.Name;
-            DetailsResolution.Text = Vault.DisplayedIssue?.Resolution;
-            DetailsType.Text = Vault.DisplayedIssue?.Type?.Name;
-            DetailsAssignee.Text = Vault.DisplayedIssue?.Assignee?.DisplayName;
-            DetailsReporter.Text = Vault.DisplayedIssue?.Reporter?.DisplayName;
-            DetailsCreated.Text = FormatTime(Vault.DisplayedIssue?.Created);
-            DetailsUpdated.Text = FormatTime(Vault.DisplayedIssue?.Updated);
+            DetailsStatus.Text = _vault.DisplayedIssue?.Status?.Name;
+            DetailsStatus.Background = GetStatusColor(_vault.DisplayedIssue?.Status?.Color);
+            DetailsPriority.Text = _vault.DisplayedIssue?.Priority?.Name;
+            DetailsResolution.Text = _vault.DisplayedIssue?.Resolution;
+            DetailsType.Text = _vault.DisplayedIssue?.Type?.Name;
+            DetailsAssignee.Text = _vault.DisplayedIssue?.Assignee?.DisplayName;
+            DetailsReporter.Text = _vault.DisplayedIssue?.Reporter?.DisplayName;
+            DetailsCreated.Text = FormatTime(_vault.DisplayedIssue?.Created);
+            DetailsUpdated.Text = FormatTime(_vault.DisplayedIssue?.Updated);
 
-            UpdateImage(TypeImage, Vault.DisplayedIssue?.Type?.IconUrl);
-            UpdateImage(AssigneeImage, Vault.DisplayedIssue?.Assignee?.AvatarUrl);
-            UpdateImage(ReporterImage, Vault.DisplayedIssue?.Reporter?.AvatarUrl);
+            UpdateImage(TypeImage, _vault.DisplayedIssue?.Type?.IconUrl);
+            UpdateImage(AssigneeImage, _vault.DisplayedIssue?.Assignee?.AvatarUrl);
+            UpdateImage(ReporterImage, _vault.DisplayedIssue?.Reporter?.AvatarUrl);
 
             RefreshComments();
             RefreshAttachments();
 
-            SubtaskGroup.Visibility = Vault.DisplayedIssue?.Subtasks?.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+            SubtaskGroup.Visibility = _vault.DisplayedIssue?.Subtasks?.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
 
-            SummaryText.Text = Vault.DisplayedIssue?.Summary == null ? "- issue summary missing -" : Vault.DisplayedIssue.Summary;
-            MarkdownViewer.Markdown = Vault.DisplayedIssue?.Description;
-            DescriptionScrollView.ScrollToVerticalOffset(Vault.DisplayedIssue == null ? 0 : Vault.DisplayedIssue.DescriptionScrollPosition);
+            SummaryText.Text = _vault.DisplayedIssue?.Summary ?? "- issue summary missing -";
+            MarkdownViewer.Markdown = _vault.DisplayedIssue?.Description;
+            DescriptionScrollView.ScrollToVerticalOffset(_vault.DisplayedIssue?.DescriptionScrollPosition ?? 0);
 
             RefreshIssueHistory();
 
-            logger.Trace("UI refresh done in {0}ms", Watch.ElapsedMilliseconds);
+            Logger.Trace("UI refresh done in {0}ms", watch.ElapsedMilliseconds);
         }
 
         private void RefreshAttachments()
         {
-            List<Attachment> Attachments = Vault.DisplayedIssue?.Attachments;
-            if (Attachments == null || Attachments.Count == 0)
+            List<Attachment> attachments = _vault.DisplayedIssue?.Attachments;
+            if (attachments == null || attachments.Count == 0)
             {
                 AttachmentsGroup.Visibility = Visibility.Collapsed;
             }
@@ -274,44 +269,44 @@ namespace Fast_Jira
             {
                 AttachmentsGroup.Visibility = Visibility.Visible;
                 AttachmentList.Items.Clear();
-                foreach (Attachment Attachment in Attachments)
+                foreach (Attachment attachment in attachments)
                 {
-                    ImageSource Source;
-                    if (!string.IsNullOrWhiteSpace(Attachment.Thumbnail) && Vault.HasImageCached(Attachment.Thumbnail))
+                    ImageSource source;
+                    if (!string.IsNullOrWhiteSpace(attachment.Thumbnail) && _vault.HasImageCached(attachment.Thumbnail))
                     {
-                        Source = Vault.GetWrappedImage(Attachment.Thumbnail);
+                        source = _vault.GetWrappedImage(attachment.Thumbnail);
                     }
                     else
                     {
                         // look at that resource path, who thought that this was a good idea?
-                        Source = new BitmapImage(new Uri("pack://application:,,,/Images/file.png"));
+                        source = new BitmapImage(new Uri("pack://application:,,,/Images/file.png"));
                     }
-                    AttachmentDetails Details = new AttachmentDetails
+                    AttachmentDetails details = new AttachmentDetails
                     {
-                        AttachmentName = Attachment.FileName,
-                        ID = Attachment.ID,
-                        AttachmentThumbnail = Source
+                        AttachmentName = attachment.FileName,
+                        Id = attachment.Id,
+                        AttachmentThumbnail = source
                     };
-                    AttachmentList.Items.Add(Details);
+                    AttachmentList.Items.Add(details);
                 }
             }
         }
 
-        private void UpdateImage(Image Element, string IconUrl)
+        private void UpdateImage(Image element, string iconUrl)
         {
-            if (Vault.HasImageCached(IconUrl))
+            if (_vault.HasImageCached(iconUrl))
             {
-                Element.Source = Vault.GetWrappedImage(IconUrl);
-                Element.Visibility = Visibility.Visible;
+                element.Source = _vault.GetWrappedImage(iconUrl);
+                element.Visibility = Visibility.Visible;
             }
             else
             {
-                Element.Source = null;
-                Element.Visibility = Visibility.Collapsed;
+                element.Source = null;
+                element.Visibility = Visibility.Collapsed;
             }
         }
 
-        private Brush GetStatusColor(string color)
+        private static Brush GetStatusColor(string color)
         {
             if ("green".Equals(color))
             {
@@ -349,53 +344,53 @@ namespace Fast_Jira
         private void UrlTextCommitted()
         {
             UrlErrorText.Text = "";
-            string IssueName = UrlTextbox.Text.Trim();
-            if (IssueName.StartsWith("http"))
+            string issueName = UrlTextbox.Text.Trim();
+            if (issueName.StartsWith("http"))
             {
-                if (!IssueName.StartsWith(AppConfig.JiraServer))
+                if (!issueName.StartsWith(_appConfig.JiraServer))
                 {
-                    UrlErrorText.Text = "You can only see issues from your configured server (" + AppConfig.JiraServer + ").";
+                    UrlErrorText.Text = "You can only see issues from your configured server (" + _appConfig.JiraServer + ").";
                     return;
                 }
-                string[] segments = new Uri(IssueName).Segments;
+                string[] segments = new Uri(issueName).Segments;
                 if (segments.Length == 0)
                 {
                     UrlErrorText.Text = "Whatever that is, it's not a valid url to a jira issue.";
                     return;
                 }
-                IssueName = segments[^1];
+                issueName = segments[^1];
             }
 
-            if (!Regex.IsMatch(IssueName, @"^[^-]+-\d+$"))
+            if (!Regex.IsMatch(issueName, @"^[^-]+-\d+$"))
             {
                 UrlErrorText.Text = "Mate, that does not look like the name of a jira issue.";
                 return;
             }
-            UrlTextbox.Text = IssueName;
+            UrlTextbox.Text = issueName;
 
-            IssueDisplayRequested(IssueName);
+            IssueDisplayRequested(issueName);
         }
 
-        private void IssueDisplayRequested(string IssueName, bool ForceUpdate = false)
+        private void IssueDisplayRequested(string issueName, bool forceUpdate = false)
         {
-            if (Vault.HasIssueCached(IssueName))
+            if (_vault.HasIssueCached(issueName))
             {
                 // check if the issue has become stale (after 1 day) and refresh it if that is the case
-                Issue CachedIssue = Vault.GetCachedIssue(IssueName);
-                DateTime LastAccessed = CachedIssue.LastAccess;
-                if (ForceUpdate || LastAccessed == null || DateTime.Now.Subtract(LastAccessed).TotalDays >= 1) //TODO: put amount in config
+                Issue cachedIssue = _vault.GetCachedIssue(issueName);
+                DateTime lastAccessed = cachedIssue.LastAccess;
+                if (forceUpdate || DateTime.Now.Subtract(lastAccessed).TotalDays >= 1) //TODO: put amount in config
                 {
-                    LoadIssue(IssueName);
+                    LoadIssue(issueName);
                 }
                 else
                 {
-                    Vault.DisplayedIssue = CachedIssue;
+                    _vault.DisplayedIssue = cachedIssue;
                     RefreshDisplayedIssue();
                 }
             }
             else
             {
-                LoadIssue(IssueName);
+                LoadIssue(issueName);
             }
         }
 
@@ -404,8 +399,8 @@ namespace Fast_Jira
             ProgressBar.IsIndeterminate = true;
             StatusText.Text = "Loading issue " + issueName + "...";
 
-            UpdateTicker++;
-            BackgroundWorker worker = new IssueLoader(UpdateTicker);
+            _updateTicker++;
+            BackgroundWorker worker = new IssueLoader(_updateTicker);
             worker.DoWork += LoadIssueWorker_DoWork;
             worker.RunWorkerCompleted += LoadIssueWorker_RunWorkerCompleted;
             worker.ProgressChanged += LoadIssueWorker_IntermediateResult;
@@ -426,25 +421,25 @@ namespace Fast_Jira
 
         void LoadIssueWorker_DoWork(object sender, DoWorkEventArgs e)
         {
-            string issueID = e.Argument as string;
-            if (string.IsNullOrWhiteSpace(issueID))
+            string issueId = e.Argument as string;
+            if (string.IsNullOrWhiteSpace(issueId))
             {
                 return;
             }
 
             try
             {
-                if (Vault.HasIssueCached(issueID))
+                if (_vault.HasIssueCached(issueId))
                 {
-                    Vault.DisplayedIssue = Vault.GetCachedIssue(issueID);
-                    (sender as BackgroundWorker).ReportProgress(0);
+                    _vault.DisplayedIssue = _vault.GetCachedIssue(issueId);
+                    ((BackgroundWorker) sender).ReportProgress(0);
                 }
-                e.Result = Vault.LoadIssue(issueID);
+                e.Result = _vault.LoadIssue(issueId);
             }
             catch (Exception ex)
             {
-                (sender as IssueLoader).Error = ex;
-                logger.Error("Unable to load issue {0}: {1}", issueID, ex);
+                ((IssueLoader) sender).Error = ex;
+                Logger.Error("Unable to load issue {0}: {1}", issueId, ex);
             }
         }
 
@@ -456,44 +451,42 @@ namespace Fast_Jira
 
         void LoadIssueWorker_RunWorkerCompleted(object sender, RunWorkerCompletedEventArgs e)
         {
-            if ((sender as IssueLoader).WorkerTick == UpdateTicker)
+            if (((IssueLoader) sender).WorkerTick != _updateTicker) return;
+
+            Exception error = ((IssueLoader) sender).Error;
+            if (error != null)
             {
-                Exception Error = (sender as IssueLoader).Error;
-                if (Error != null)
-                {
-                    UrlErrorText.Text = "Error! " + Error.GetType().Name + ": " + Error.Message;
-                }
+                UrlErrorText.Text = "Error! " + error.GetType().Name + ": " + error.Message;
+            }
 
-                ProgressBar.IsIndeterminate = false;
-                StatusText.Text = "";
+            ProgressBar.IsIndeterminate = false;
+            StatusText.Text = "";
 
-                Issue Result = e.Result as Issue;
-                if (Result != null)
-                {
-                    Vault.DisplayedIssue = Result;
-                    RefreshDisplayedIssue();
-                }
+            if (e.Result is Issue result)
+            {
+                _vault.DisplayedIssue = result;
+                RefreshDisplayedIssue();
             }
         }
 
         private void SettingsCommand_Executed(object parameter)
         {
-            Settings SettingsWindow = new Settings
+            Settings settingsWindow = new Settings
             {
                 Owner = this,
-                AppConfig = AppConfig
+                AppConfig = _appConfig
             };
-            SettingsWindow.ShowDialog();
+            settingsWindow.ShowDialog();
             ConfigureClient();
         }
 
         private void BrowserCommand_Executed(object parameter)
         {
-            if (string.IsNullOrWhiteSpace(Vault.DisplayedIssue?.Key) || !AppConfig.JiraServer.StartsWith("http"))
+            if (string.IsNullOrWhiteSpace(_vault.DisplayedIssue?.Key) || !_appConfig.JiraServer.StartsWith("http"))
             {
                 return;
             }
-            string url = AppConfig.JiraServer + (AppConfig.JiraServer.EndsWith('/') ? "" : "/") + "browse/" + Vault.DisplayedIssue.Key;
+            string url = _appConfig.JiraServer + (_appConfig.JiraServer.EndsWith('/') ? "" : "/") + "browse/" + _vault.DisplayedIssue.Key;
             Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
         }
 
@@ -503,31 +496,31 @@ namespace Fast_Jira
             {
                 if (Clipboard.ContainsText())
                 {
-                    string Content = Clipboard.GetText().Trim();
+                    string content = Clipboard.GetText().Trim();
                     try
                     {
                         string issueName = "";
-                        if (Content.StartsWith(AppConfig.JiraServer))
+                        if (content.StartsWith(_appConfig.JiraServer))
                         {
-                            string[] segments = new Uri(Content).Segments;
+                            string[] segments = new Uri(content).Segments;
                             if (segments.Length > 0)
                             {
                                 issueName = segments[^1];
                             }
                         }
-                        else if (Regex.IsMatch(Content, @"^[^-]+-\d+$"))
+                        else if (Regex.IsMatch(content, @"^[^-]+-\d+$"))
                         {
-                            issueName = Content;
+                            issueName = content;
                         }
 
-                        Vault.PrefetchIssue(issueName);
+                        _vault.PrefetchIssue(issueName);
                     }
                     catch (Exception e)
                     {
-                        logger.Trace(e, "Clipboard exception");
+                        Logger.Trace(e, "Clipboard exception");
                     }
-                    Thread.Sleep(1000);
                 }
+                Thread.Sleep(1000);
             }
         }
     }
@@ -564,7 +557,7 @@ namespace Fast_Jira
 
     public class AttachmentDetails
     {
-        public string ID { get; set; }
+        public string Id { get; set; }
         public string AttachmentName { get; set; }
         public ImageSource AttachmentThumbnail { get; set; }
     }

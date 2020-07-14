@@ -1,8 +1,5 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Configuration;
+﻿using System.Configuration;
 using System.Reflection;
-using System.Text;
 
 namespace Fast_Jira.core
 {
@@ -26,24 +23,24 @@ namespace Fast_Jira.core
 
         public void SaveToDisk()
         {
-            Configuration Config = ConfigurationManager.OpenExeConfiguration(Assembly.GetEntryAssembly().Location);
+            Configuration config = ConfigurationManager.OpenExeConfiguration(Assembly.GetEntryAssembly().Location);
 
-            SetString(Config, "JiraUser", JiraUser);
-            SetString(Config, "JiraPassword", JiraPassword);
-            SetString(Config, "JiraServer", JiraServer);
+            SetString(config, "JiraUser", JiraUser);
+            SetString(config, "JiraPassword", JiraPassword);
+            SetString(config, "JiraServer", JiraServer);
 
-            Config.Save(ConfigurationSaveMode.Modified);
+            config.Save(ConfigurationSaveMode.Modified);
         }
 
-        private string GetString(string Key)
+        private static string GetString(string key)
         {
-            return ConfigurationManager.AppSettings.Get(Key);
+            return ConfigurationManager.AppSettings.Get(key);
         }
 
-        private void SetString(Configuration Config, string Key, string Value)
+        private static void SetString(Configuration config, string key, string value)
         {
-            Config.AppSettings.Settings.Remove(Key);
-            Config.AppSettings.Settings.Add(Key, Value);
+            config.AppSettings.Settings.Remove(key);
+            config.AppSettings.Settings.Add(key, value);
         }
     }
 }

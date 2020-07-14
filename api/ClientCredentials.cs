@@ -7,7 +7,7 @@ using System.Threading.Tasks;
 
 namespace Fast_Jira.api
 {
-    class ClientCredentials : ServiceClientCredentials
+    public class ClientCredentials : ServiceClientCredentials
     {
         public string Username { get; set; }
         public string Password { get; set; }
@@ -16,9 +16,9 @@ namespace Fast_Jira.api
         {
             if (!string.IsNullOrWhiteSpace(Username) && !string.IsNullOrWhiteSpace(Password))
             {
-                string HeaderVal = Username + ":" + Password;
-                HeaderVal = Convert.ToBase64String(Encoding.UTF8.GetBytes(HeaderVal));
-                request.Headers.Add("Authorization", "Basic " + HeaderVal);
+                string headerVal = Username + ":" + Password;
+                headerVal = Convert.ToBase64String(Encoding.UTF8.GetBytes(headerVal));
+                request.Headers.Add("Authorization", "Basic " + headerVal);
             }
             return base.ProcessHttpRequestAsync(request, cancellationToken);
         }

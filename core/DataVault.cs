@@ -23,44 +23,43 @@ namespace Fast_Jira.core
 {
     public class DataVault
     {
-        const string CacheFolder = "./Cache";
-        const string SessionFolder = "./Cache/Session";
-        const string AvatarFolder = "./Cache/Avatars";
-        const string ThumbnailFolder = "./Cache/Thumbnails";
-        const string IssuesFolder = "./Cache/Issues";
+        private const string CacheFolder = "./Cache";
+        private const string SessionFolder = "./Cache/Session";
+        private const string AvatarFolder = "./Cache/Avatars";
+        private const string ThumbnailFolder = "./Cache/Thumbnails";
+        private const string IssuesFolder = "./Cache/Issues";
 
-        private static readonly NLog.Logger logger = NLog.LogManager.GetCurrentClassLogger();
+        private static readonly NLog.Logger Logger = NLog.LogManager.GetCurrentClassLogger();
+        public readonly JiraAPI JiraApi = new JiraAPI(new ClientCredentials(), new HttpClientHandler(), new DelegatingHandler[0]);
 
-        public readonly JiraAPI JiraAPI = new JiraAPI(new ClientCredentials(), new HttpClientHandler(), new DelegatingHandler[0]);
+        private Issue _displayedIssue;
 
-        private Issue displayedIssue;
-
-        private readonly ConcurrentDictionary<string, CachedImage> CachedImages = new ConcurrentDictionary<string, CachedImage>();
-        private readonly ConcurrentDictionary<string, Issue> CachedIssues = new ConcurrentDictionary<string, Issue>();
-        private readonly ConcurrentDictionary<string, Task<Issue>> PrefetchIssues = new ConcurrentDictionary<string, Task<Issue>>();
-        private readonly SearchEngine SearchEngine = new SearchEngine();
+        private readonly ConcurrentDictionary<string, CachedImage> _cachedImages = new ConcurrentDictionary<string, CachedImage>();
+        private readonly ConcurrentDictionary<string, Issue> _cachedIssues = new ConcurrentDictionary<string, Issue>();
+        private readonly ConcurrentDictionary<string, Task<Issue>> _prefetchIssues = new ConcurrentDictionary<string, Task<Issue>>();
+        private readonly SearchEngine _searchEngine = new SearchEngine();
 
         public Issue DisplayedIssue
         {
-            get => displayedIssue;
+            get => _displayedIssue;
             set
             {
-                if (displayedIssue == value)
+                if (_displayedIssue == value)
                 {
                     return;
                 }
-                displayedIssue = value;
+                _displayedIssue = value;
                 if (value == null)
                 {
                     return;
                 }
-                if (!displayedIssue.DisplayInHistory)
+                if (!_displayedIssue.DisplayInHistory)
                 {
-                    displayedIssue.DisplayInHistory = true;
-                    WriteIssueToDisk(displayedIssue);
+                    _displayedIssue.DisplayInHistory = true;
+                    WriteIssueToDisk(_displayedIssue);
                 }
 
-                string jsonString = JsonSerializer.Serialize(displayedIssue);
+                string jsonString = JsonSerializer.Serialize(_displayedIssue);
                 lock (this)
                 {
                     File.WriteAllText(SessionFolder + "/displayedIssue.json", jsonString);
@@ -79,22 +78,22 @@ namespace Fast_Jira.core
 
         private void ReadCachedIssues()
         {
-            foreach (string Filename in Directory.EnumerateFiles(IssuesFolder))
+            foreach (string filename in Directory.EnumerateFiles(IssuesFolder))
             {
-                string jsonString = File.ReadAllText(Filename);
-                Issue Issue = JsonSerializer.Deserialize<Issue>(jsonString);
-                if (CachedIssues.ContainsKey(Issue.Key))
+                string jsonString = File.ReadAllText(filename);
+                Issue issue = JsonSerializer.Deserialize<Issue>(jsonString);
+                if (_cachedIssues.ContainsKey(issue.Key))
                 {
                     continue;
                 }
 
-                CachedIssues[Issue.Key] = Issue;
+                _cachedIssues[issue.Key] = issue;
             }
         }
 
-        public IEnumerable<Issue> GetAllIssuesSorted(bool HistoryOnly = true)
+        public IEnumerable<Issue> GetAllIssuesSorted(bool historyOnly = true)
         {
-            return CachedIssues.Values.Where(i => !HistoryOnly || i.DisplayInHistory).OrderByDescending(i => i.LastAccess);
+            return _cachedIssues.Values.Where(i => !historyOnly || i.DisplayInHistory).OrderByDescending(i => i.LastAccess);
         }
 
         private void ReadCachedImages()
@@ -103,18 +102,18 @@ namespace Fast_Jira.core
             if (File.Exists(imagesFile))
             {
                 string jsonString = File.ReadAllText(imagesFile);
-                var References = JsonSerializer.Deserialize<Dictionary<string, CachedImage>>(jsonString);
-                foreach (var Pair in References)
+                var references = JsonSerializer.Deserialize<Dictionary<string, CachedImage>>(jsonString);
+                foreach (var pair in references)
                 {
-                    if (CachedImages.ContainsKey(Pair.Key) || !File.Exists(Pair.Value.Path))
+                    if (_cachedImages.ContainsKey(pair.Key) || !File.Exists(pair.Value.Path))
                     {
                         continue;
                     }
 
-                    CachedImages[Pair.Key] = new CachedImage()
+                    _cachedImages[pair.Key] = new CachedImage()
                     {
                         Data = null,
-                        Path = Pair.Value.Path
+                        Path = pair.Value.Path
                     };
                 }
             }
@@ -122,21 +121,21 @@ namespace Fast_Jira.core
 
         public void InitFromDisk()
         {
-            logger.Debug("Reading data cache from disk...");
-            Stopwatch Watch = Stopwatch.StartNew();
+            Logger.Debug("Reading data cache from disk...");
+            var watch = Stopwatch.StartNew();
             ReadCachedImages();
             ReadCachedIssues();
-            displayedIssue = ReadDisplayedIssue();
-            Task.Run(() => InitSearchEngine());
-            logger.Debug("Data cache initialized in {0}ms.", Watch.ElapsedMilliseconds);
+            _displayedIssue = ReadDisplayedIssue();
+            Task.Run(InitSearchEngine);
+            Logger.Debug("Data cache initialized in {0}ms.", watch.ElapsedMilliseconds);
         }
 
         private async ValueTask InitSearchEngine()
         {
-            foreach (var Issue in CachedIssues.Values)
+            foreach (var issue in _cachedIssues.Values)
             {
-                string text = Issue.ToFulltextDocument();
-                await SearchEngine.AddToIndex(Issue.Key, text);
+                string text = issue.ToFulltextDocument();
+                await _searchEngine.AddToIndex(issue.Key, text);
             }
         }
 
@@ -151,14 +150,15 @@ namespace Fast_Jira.core
             return null;
         }
 
-        public List<Issue> SearchIssues(string SearchText)
+        public List<Issue> SearchIssues(string searchText)
         {
             var issues = new List<Issue>();
-            if (string.IsNullOrWhiteSpace(SearchText))
+            if (string.IsNullOrWhiteSpace(searchText))
             {
                 return issues;
             }
-            foreach (SearchResult<string> result in SearchEngine.Search(SearchText))
+
+            foreach (SearchResult<string> result in _searchEngine.Search(searchText))
             {
                 if (HasIssueCached(result.Key))
                 {
@@ -168,176 +168,170 @@ namespace Fast_Jira.core
             return issues;
         }
 
-        public bool HasImageCached(string URL)
+        public bool HasImageCached(string url)
         {
-            return string.IsNullOrWhiteSpace(URL) || CachedImages.ContainsKey(URL);
+            return string.IsNullOrWhiteSpace(url) || _cachedImages.ContainsKey(url);
         }
 
-        public bool HasIssueCached(string ID)
+        public bool HasIssueCached(string id)
         {
-            return CachedIssues.ContainsKey(ID);
+            return _cachedIssues.ContainsKey(id);
         }
 
-        public Issue GetCachedIssue(string ID)
+        public Issue GetCachedIssue(string id)
         {
-            return CachedIssues[ID];
+            return _cachedIssues[id];
         }
 
-        public Image GetCachedImage(string URL)
+        public Image GetCachedImage(string url)
         {
-            if (string.IsNullOrWhiteSpace(URL) || !CachedImages.ContainsKey(URL) || !File.Exists(CachedImages[URL].Path))
+            if (string.IsNullOrWhiteSpace(url) || !_cachedImages.ContainsKey(url) || !File.Exists(_cachedImages[url].Path))
             {
                 return null;
             }
 
-            if (CachedImages[URL].Data == null)
-            {
-                CachedImages[URL].Data = Image.FromFile(CachedImages[URL].Path);
-            }
-            return CachedImages[URL].Data;
+            return _cachedImages[url].Data ?? (_cachedImages[url].Data = Image.FromFile(_cachedImages[url].Path));
         }
 
-        public ImageSource GetWrappedImage(string URL)
+        public ImageSource GetWrappedImage(string url)
         {
-            Image Input = GetCachedImage(URL);
-            if (Input == null)
+            Image input = GetCachedImage(url);
+            if (input == null)
             {
                 return null;
             }
 
             // must be done in the ui thread, because otherwise the image source is not accessible from the ui thread
             using var ms = new MemoryStream();
-            Input.Save(ms, ImageFormat.Png);
+            input.Save(ms, ImageFormat.Png);
             ms.Seek(0, SeekOrigin.Begin);
 
-            var BitmapImage = new BitmapImage();
-            BitmapImage.BeginInit();
-            BitmapImage.CacheOption = BitmapCacheOption.OnLoad;
-            BitmapImage.StreamSource = ms;
-            BitmapImage.EndInit();
+            var bitmapImage = new BitmapImage();
+            bitmapImage.BeginInit();
+            bitmapImage.CacheOption = BitmapCacheOption.OnLoad;
+            bitmapImage.StreamSource = ms;
+            bitmapImage.EndInit();
 
-            return BitmapImage;
+            return bitmapImage;
         }
 
         public void PrefetchIssue(string issueName)
         {
-            if (string.IsNullOrWhiteSpace(issueName) || issueName.Length > 30 || HasIssueCached(issueName) || PrefetchIssues.ContainsKey(issueName))
+            if (string.IsNullOrWhiteSpace(issueName) || issueName.Length > 30 || HasIssueCached(issueName) || _prefetchIssues.ContainsKey(issueName))
             {
                 return;
             }
             // there is a chance for a race condition here, but I don't care.
-            Task<Issue> LoadingTask = new Task<Issue>(() => LoadIssue(issueName, true));
-            PrefetchIssues[issueName] = LoadingTask;
-            logger.Debug("Trying to prefetch issue {0}", issueName);
+            Task<Issue> loadingTask = new Task<Issue>(() => LoadIssue(issueName, true));
+            _prefetchIssues[issueName] = loadingTask;
+            Logger.Debug("Trying to prefetch issue {0}", issueName);
 
             try
             {
-                LoadingTask.RunSynchronously();
+                loadingTask.RunSynchronously();
             }
             finally
             {
-                PrefetchIssues.Remove(issueName, out LoadingTask);
+                _prefetchIssues.Remove(issueName, out loadingTask);
             }
         }
 
-        public Issue LoadIssue(string IssueID, bool IsPrefetch = false)
+        public Issue LoadIssue(string issueId, bool isPrefetch = false)
         {
-            if (!IsPrefetch && PrefetchIssues.ContainsKey(IssueID))
+            if (!isPrefetch && _prefetchIssues.ContainsKey(issueId))
             {
-                Task<Issue> PrefetchTask = PrefetchIssues[IssueID];
-                PrefetchTask.Wait();
-                if (PrefetchTask.IsCompletedSuccessfully)
+                Task<Issue> prefetchTask = _prefetchIssues[issueId];
+                prefetchTask.Wait();
+                if (prefetchTask.IsCompletedSuccessfully)
                 {
-                    return PrefetchTask.Result;
+                    return prefetchTask.Result;
                 }
-                else
-                {
-                    throw PrefetchTask.Exception;
-                }
+
+                throw prefetchTask.Exception;
             }
 
-            Stopwatch Watch = Stopwatch.StartNew();
-            logger.Debug("Starting to load issue {0}...", IssueID);
-            var IssueTask = JiraAPI.GetIssueWithHttpMessagesAsync(IssueID, Issue.UsedFields);
-            if (!IssueTask.Wait(3000))
+            var watch = Stopwatch.StartNew();
+            Logger.Debug("Starting to load issue {0}...", issueId);
+            var issueTask = JiraApi.GetIssueWithHttpMessagesAsync(issueId, Issue.UsedFields);
+            if (!issueTask.Wait(3000))
             {
                 throw new TimeoutException("Request did not finish in time");
             }
-            HttpOperationResponse<IssueBean> Response = IssueTask.Result;
-            if (!Response.Response.IsSuccessStatusCode)
+            var response = issueTask.Result;
+            if (!response.Response.IsSuccessStatusCode)
             {
-                if (!IsPrefetch)
+                if (!isPrefetch)
                 {
-                    logger.Error("Request for issue {0} failed. {1}", IssueID, Response.Response);
+                    Logger.Error("Request for issue {0} failed. {1}", issueId, response.Response);
                 }
-                throw new HttpRequestException("Request failed. StatusCode: " + Response.Response.StatusCode);
+                throw new HttpRequestException("Request failed. StatusCode: " + response.Response.StatusCode);
             }
-            long CoreTime = Watch.ElapsedMilliseconds;
-            Watch.Restart();
-            IssueBean Bean = Response.Body;
-            Issue NewIssue = Issue.FromBean(Bean);
-            LoadAllResourcesForIssue(NewIssue);
-            AddCachedIssue(IssueID, NewIssue);
+            long coreTime = watch.ElapsedMilliseconds;
+            watch.Restart();
+            IssueBean bean = response.Body;
+            Issue newIssue = Issue.FromBean(bean);
+            LoadAllResourcesForIssue(newIssue);
+            AddCachedIssue(issueId, newIssue);
 
-            long ResourceTime = Watch.ElapsedMilliseconds;
-            logger.Debug("Issue {0} loaded in {1}ms ({2}ms base request + {3}ms resources)", IssueID, CoreTime + ResourceTime, CoreTime, ResourceTime);
-            return NewIssue;
+            long resourceTime = watch.ElapsedMilliseconds;
+            Logger.Debug("Issue {0} loaded in {1}ms ({2}ms base request + {3}ms resources)", issueId, coreTime + resourceTime, coreTime, resourceTime);
+            return newIssue;
         }
 
-        private void LoadImage(string URL, string FileName, string TargetFolder)
+        private void LoadImage(string url, string fileName, string targetFolder)
         {
-            logger.Error("Starting to load image from {0}", URL);
-            var AsyncTask = JiraAPI.HttpClient.GetAsync(URL);
-            if (!AsyncTask.Wait(3500))
+            Logger.Error("Starting to load image from {0}", url);
+            var asyncTask = JiraApi.HttpClient.GetAsync(url);
+            if (!asyncTask.Wait(3500))
             {
                 // TODO: add to config
-                logger.Error("Timeout while trying to load image from {0}", URL);
-                throw new TimeoutException("Unable to load image " + FileName);
+                Logger.Error("Timeout while trying to load image from {0}", url);
+                throw new TimeoutException("Unable to load image " + fileName);
             }
-            HttpResponseMessage Response = AsyncTask.Result;
-            if (!Response.IsSuccessStatusCode)
+            HttpResponseMessage response = asyncTask.Result;
+            if (!response.IsSuccessStatusCode)
             {
-                logger.Error("Unable to load image {0}: {1}", URL, Response);
+                Logger.Error("Unable to load image {0}: {1}", url, response);
                 return;
             }
 
-            Image Result;
-            var ContentType = Response.Content.Headers.GetValues("Content-Type");
-            if (ContentType.Any(Type => Regex.IsMatch(Type, "image/svg.*")))
+            Image result;
+            var typeList = response.Content.Headers.GetValues("Content-Type").ToList();
+            if (typeList.Any(type => Regex.IsMatch(type, "image/svg.*")))
             {
-                string SVG = Response.Content.ReadAsStringAsync().Result;
-                SvgDocument Document = SvgDocument.FromSvg<SvgDocument>(SVG);
-                Result = Document.Draw();
+                string svg = response.Content.ReadAsStringAsync().Result;
+                SvgDocument document = SvgDocument.FromSvg<SvgDocument>(svg);
+                result = document.Draw();
             }
-            else if (ContentType.Any(Type => Regex.IsMatch(Type, "image/(png|jpg|jpeg|bmp).*")))
+            else if (typeList.Any(type => Regex.IsMatch(type, "image/(png|jpg|jpeg|bmp).*")))
             {
-                Stream Body = Response.Content.ReadAsStreamAsync().Result;
-                Result = Image.FromStream(Body);
+                Stream body = response.Content.ReadAsStreamAsync().Result;
+                result = Image.FromStream(body);
             }
             else
             {
-                logger.Warn("Unknown content type {0} for image from {1}", ContentType, URL);
+                Logger.Warn("Unknown content type {0} for image from {1}", typeList, url);
                 return;
             }
 
-            string FilePath = TargetFolder + "/" + FileName + ".png";
-            Result.Save(FilePath, ImageFormat.Png);
+            string filePath = targetFolder + "/" + fileName + ".png";
+            result.Save(filePath, ImageFormat.Png);
 
-            CachedImages[URL] = new CachedImage()
+            _cachedImages[url] = new CachedImage()
             {
-                Data = Result,
-                Path = FilePath
+                Data = result,
+                Path = filePath
             };
             lock (this)
             {
-                File.WriteAllText(CacheFolder + "/images.json", JsonSerializer.Serialize(CachedImages));
+                File.WriteAllText(CacheFolder + "/images.json", JsonSerializer.Serialize(_cachedImages));
             }
         }
 
-        public void AddCachedIssue(string issueID, Issue issue)
+        public void AddCachedIssue(string issueId, Issue issue)
         {
             issue.LastAccess = DateTime.Now;
-            CachedIssues[issueID] = issue;
+            _cachedIssues[issueId] = issue;
             WriteIssueToDisk(issue);
         }
 
@@ -349,72 +343,72 @@ namespace Fast_Jira.core
             }
         }
 
-        private void LoadAllResourcesForIssue(Issue NewIssue)
+        private void LoadAllResourcesForIssue(Issue newIssue)
         {
-            LoadIssueTypeAvatar(NewIssue.Type);
-            LoadIssueTypeAvatar(NewIssue.Priority);
-            LoadPersonAvatar(NewIssue.Assignee);
-            LoadPersonAvatar(NewIssue.Reporter);
-            LoadCommentAvatars(NewIssue.Comments);
-            LoadAttachmentThumbnails(NewIssue.Attachments);
+            LoadIssueTypeAvatar(newIssue.Type);
+            LoadIssueTypeAvatar(newIssue.Priority);
+            LoadPersonAvatar(newIssue.Assignee);
+            LoadPersonAvatar(newIssue.Reporter);
+            LoadCommentAvatars(newIssue.Comments);
+            LoadAttachmentThumbnails(newIssue.Attachments);
         }
 
-        private void LoadAttachmentThumbnails(List<Attachment> Attachments)
+        private void LoadAttachmentThumbnails(List<Attachment> attachments)
         {
-            if (Attachments == null)
+            if (attachments == null)
             {
                 return;
             }
-            foreach (Attachment attachment in Attachments)
+            foreach (Attachment attachment in attachments)
             {
                 LoadThumbnail(attachment.Thumbnail);
             }
         }
 
-        private void LoadCommentAvatars(List<Comment> Comments)
+        private void LoadCommentAvatars(List<Comment> comments)
         {
-            if (Comments == null)
+            if (comments == null)
             {
                 return;
             }
-            foreach (Comment c in Comments)
+            foreach (Comment c in comments)
             {
                 LoadPersonAvatar(c.Author);
             }
         }
 
-        private void LoadPersonAvatar(Person Input)
+        private void LoadPersonAvatar(Person input)
         {
-            string AvatarUrl = Input?.AvatarUrl;
-            if (!HasImageCached(AvatarUrl))
+            string avatarUrl = input?.AvatarUrl;
+            if (!HasImageCached(avatarUrl))
             {
-                LoadImage(AvatarUrl, Input?.Key, AvatarFolder);
+                LoadImage(avatarUrl, input?.Key, AvatarFolder);
             }
         }
 
-        private void LoadThumbnail(string Url)
+        private void LoadThumbnail(string url)
         {
-            if (Url == null)
+            if (url == null)
             {
                 return;
             }
-            string FileName = new Uri(Url).Segments[^1];
-            if (!HasImageCached(Url))
+            string fileName = new Uri(url).Segments[^1];
+            if (!HasImageCached(url))
             {
-                LoadImage(Url, FileName, ThumbnailFolder);
+                LoadImage(url, fileName, ThumbnailFolder);
             }
         }
 
-        private void LoadIssueTypeAvatar(IssueType Type)
+        private void LoadIssueTypeAvatar(IssueType type)
         {
-            string IconUrl = Type?.IconUrl;
-            if (!HasImageCached(IconUrl))
+            string iconUrl = type?.IconUrl;
+            if (!HasImageCached(iconUrl))
             {
-                LoadImage(IconUrl, Type?.Name + "-" + Type?.IconID, AvatarFolder);
+                LoadImage(iconUrl, type?.Name + "-" + type?.IconId, AvatarFolder);
             }
         }
 
-        class CachedImage
+        private class CachedImage
         {
             public string Path { get; set; }
 
