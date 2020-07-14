@@ -3,23 +3,25 @@ using Newtonsoft.Json.Linq;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text.Json;
+using System.Text;
 using System.Text.RegularExpressions;
 
 namespace Fast_Jira.core
 {
     public class Issue
     {
-        public const string UsedFields = "resolution,assignee,reporter,issuetype,status,comment,priority,project,attachment,updated,created,description,summary";
+        public const string UsedFields = "resolution,assignee,reporter,issuetype,status,comment,priority,project,attachment,updated,created,description,summary,issuelinks";
 
         // -------- Set by UI ---------------
 
         /// <summary>Last known scrollbar position of the description text</summary>
-        public int DescriptionScrollPosition { get; set; }
+        public double DescriptionScrollPosition { get; set; }
 
         /// <summary>Last known scrollbar position of the description text</summary>
         public DateTime LastAccess { get; set; }
 
+        /// <summary>This is true only for issues explicitly opened by the user (so prefetched issues are not displayed)</summary>
+        public bool DisplayInHistory { get; set; }
 
         // -------- Values from Jira --------
 
@@ -43,7 +45,7 @@ namespace Fast_Jira.core
         public DateTime Created { get; set; }
 
         public List<string> IssueLinks { get; set; }
-
+        
         public List<string> Subtasks { get; set; }
 
         public List<Comment> Comments { get; set; }
@@ -150,6 +152,21 @@ namespace Fast_Jira.core
                 return new string('#', count) + " ";
             });
             return Fixed;
+        }
+
+        public string ToFulltextDocument()
+        {
+            StringBuilder sb = new StringBuilder();
+            sb.Append(string.Join("\n", Key, Description, Summary, Assignee.DisplayName, Reporter.DisplayName));
+            if (Comments != null)
+            {
+                foreach (Comment comment in Comments)
+                {
+                    sb.Append('\n');
+                    sb.Append(string.Join("\n", comment.Author.DisplayName, comment.Body));
+                }
+            }
+            return sb.ToString();
         }
     }
 

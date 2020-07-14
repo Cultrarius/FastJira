@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        xmlns:local="clr-namespace:Fast_Jira"
+        xmlns:ui="clr-namespace:Fast_Jira.ui"
         xmlns:markdig="clr-namespace:Markdig.Wpf;assembly=Markdig.Wpf"
         mc:Ignorable="d"
         Title="Fast Jira" Height="800" Width="1200" WindowStartupLocation="CenterScreen">
@@ -40,11 +40,11 @@
                     <RowDefinition Height="100*"/>
                 </Grid.RowDefinitions>
                 <TextBlock Grid.Row="0" Text="Issue History" Margin="10,15,0,0" FontSize="18"/>
-                <ScrollViewer Grid.Row="1" DockPanel.Dock="Left" Width="250" VerticalScrollBarVisibility="Auto">
-                    <ListBox x:Name="HistoryList" BorderThickness="0">
+                <ui:DelegatingScrollViewer Grid.Row="1" DockPanel.Dock="Left" Width="250">
+                    <ListBox x:Name="HistoryList" BorderThickness="0" KeyboardNavigation.TabNavigation="None" MouseWheel="MainWindow_MouseWheel">
                         <ListBox.ItemTemplate>
                             <DataTemplate>
-                                <Grid Margin="2,0,0,0">
+                                <Grid Margin="2,0,0,0" MouseWheel="MainWindow_MouseWheel">
                                     <Grid.RowDefinitions>
                                         <RowDefinition Height="20"/>
                                         <RowDefinition MaxHeight="30"/>
@@ -66,7 +66,7 @@
                         <ListBoxItem>(2) AADX-6123</ListBoxItem>
                         <ListBoxItem>(3) JALCI-12611</ListBoxItem>
                     </ListBox>
-                </ScrollViewer>
+                </ui:DelegatingScrollViewer>
             </Grid>
 
             <Grid DockPanel.Dock="Top">
@@ -79,17 +79,17 @@
                     <ColumnDefinition Width="300*"/>
                 </Grid.ColumnDefinitions>
                 <Label x:Name="label_url" Content="Issue:" HorizontalAlignment="Left" Margin="15,11,0,0" VerticalAlignment="Top" FontSize="18"/>
-                <TextBox x:Name="UrlTextbox" Margin="67,15,20,0" Text="http://somejira" VerticalAlignment="Top" FontSize="18" FontWeight="Bold"/>
+                <TextBox x:Name="UrlTextbox" Margin="67,15,20,0" Text="http://somejira" VerticalAlignment="Top" FontSize="18" FontWeight="Bold" TabIndex="1"/>
                 <TextBlock Margin="70,0,0,0" x:Name="UrlErrorText" Text="Something went wrong" VerticalAlignment="Center" Grid.Row="1" Foreground="Red" FontWeight="DemiBold" FontStyle="Normal" />
 
                 <StackPanel x:Name="toolBar" Height="50" Grid.Column="1" HorizontalAlignment="Right" VerticalAlignment="Top" Orientation="Horizontal" Grid.RowSpan="2">
-                    <Button x:Name="button_browser" Margin="10" Background="White">
+                    <Button x:Name="buttonBrowser" Margin="10" Background="White" TabIndex="2">
                         <StackPanel Orientation="Horizontal">
                             <Image Source="/Images/external-link.png" Margin="2"></Image>
                             <TextBlock VerticalAlignment="Center" Margin="5">Browser</TextBlock>
                         </StackPanel>
                     </Button>
-                    <Button x:Name="buttonSettings" Margin="0,10,20,10" Background="White">
+                    <Button x:Name="buttonSettings" Margin="0,10,20,10" Background="White" TabIndex="3">
                         <StackPanel Orientation="Horizontal">
                             <Image Source="/Images/sliders.png" Margin="2"></Image>
                             <TextBlock VerticalAlignment="Center" Margin="5">Settings</TextBlock>
@@ -98,10 +98,10 @@
                 </StackPanel>
             </Grid>
 
-            <ScrollViewer DockPanel.Dock="Right" Width="350" Margin="0,90,10,0" VerticalScrollBarVisibility="Auto">
+            <ui:DelegatingScrollViewer DockPanel.Dock="Right" Width="350" Margin="0,90,10,0" VerticalScrollBarVisibility="Auto">
                 <StackPanel>
                     <GroupBox Header="Details">
-                        <ItemsControl Name="IssueDetailsList"  BorderThickness="0">
+                        <ItemsControl Name="IssueDetailsList"  BorderThickness="0" IsTabStop="False">
                             <Grid Margin="5,3,0,0">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="{StaticResource DetailsKeyWidth}" />
@@ -187,10 +187,10 @@
                         </ItemsControl>
                     </GroupBox>
                     <GroupBox Name="SubtaskGroup" Header="Subtasks" Margin="0,20,0,0">
-                        <ListBox Name="SubtaskList"  BorderThickness="0">
+                        <ListBox Name="SubtaskList"  BorderThickness="0" Focusable="False">
                             <ListBox.ItemTemplate>
                                 <DataTemplate>
-                                    <Grid>
+                                    <Grid MouseWheel="MainWindow_MouseWheel">
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="100" />
                                             <ColumnDefinition Width="150" />
@@ -203,26 +203,26 @@
                         </ListBox>
                     </GroupBox>
                 </StackPanel>
-            </ScrollViewer>
+            </ui:DelegatingScrollViewer>
 
             <GroupBox DockPanel.Dock="Bottom" x:Name="AttachmentsGroup" Header="Attachments" Height="135">
-                <ScrollViewer VerticalScrollBarVisibility="Hidden" HorizontalScrollBarVisibility="Auto" >
-                    <ListBox x:Name="AttachmentList" BorderThickness="0">
+                <ui:DelegatingScrollViewer VerticalScrollBarVisibility="Hidden" HorizontalScrollBarVisibility="Auto">
+                    <ListBox x:Name="AttachmentList" BorderThickness="0" KeyboardNavigation.TabNavigation="None" MouseWheel="MainWindow_MouseWheel">
                         <ListBox.ItemsPanel>
                             <ItemsPanelTemplate>
-                                <StackPanel Orientation="Horizontal"></StackPanel>
+                                <StackPanel Orientation="Horizontal" MouseWheel="MainWindow_MouseWheel"/>
                             </ItemsPanelTemplate>
                         </ListBox.ItemsPanel>
                         <ListBox.ItemTemplate>
                             <DataTemplate>
-                                <StackPanel Width="100">
+                                <StackPanel Width="100" MouseWheel="MainWindow_MouseWheel">
                                     <Image Margin="0,0,0,0" MaxWidth="100" Height="70" Source="{Binding AttachmentThumbnail}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                     <TextBlock Text="{Binding AttachmentName}" FontSize="14" TextTrimming="CharacterEllipsis" HorizontalAlignment="Center" />
                                 </StackPanel>
                             </DataTemplate>
                         </ListBox.ItemTemplate>
                     </ListBox>
-                </ScrollViewer>
+                </ui:DelegatingScrollViewer>
             </GroupBox>
 
             <Grid>
@@ -230,18 +230,24 @@
                     <RowDefinition Height="95"/>
                     <RowDefinition Height="323*"/>
                 </Grid.RowDefinitions>
-                <TextBlock Name="SummaryText" TextWrapping="WrapWithOverflow" HorizontalAlignment="Left" FontSize="24" FontWeight="Bold" VerticalAlignment="Center" Margin="10,0,0,0">
+                <TextBox IsReadOnly="True" BorderThickness="0" Name="SummaryText" TextWrapping="WrapWithOverflow" HorizontalAlignment="Left" FontSize="24" FontWeight="Bold" VerticalAlignment="Center" Margin="10,0,0,0">
                     No issue to display, please enter a valid jira URL
-                </TextBlock>
-                <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Margin="10,5,10,10">
+                </TextBox>
+                <ScrollViewer x:Name="DescriptionScrollView" Grid.Row="1" VerticalScrollBarVisibility="Auto" Margin="10,5,10,10">
                     <StackPanel>
-                        <markdig:MarkdownViewer Name="MarkdownViewer"/>
+                        <markdig:MarkdownViewer Name="MarkdownViewer" Markdown="Here is some issue description Here is some issue description Here is some issue description Here is some issue description Here is some issue description Here is some issue description Here is some issue description Here is some issue description Here is some issue description Here is some issue description Here is some issue description" IsTabStop="False">
+                            <markdig:MarkdownViewer.Template>
+                                <ControlTemplate TargetType="markdig:MarkdownViewer">
+                                    <ui:MarkdownContainer Document="{TemplateBinding Document}" MouseWheel="MainWindow_MouseWheel"/>
+                                </ControlTemplate>
+                            </markdig:MarkdownViewer.Template>
+                        </markdig:MarkdownViewer>
                         <StackPanel x:Name="CommentPanel">
                             <Separator Margin="0,0,0,15"/>
-                            <ItemsControl x:Name="CommentList" BorderThickness="0" >
+                            <ItemsControl x:Name="CommentList" BorderThickness="0" IsTabStop="False" >
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate>
-                                        <StackPanel>
+                                        <StackPanel MouseWheel="MainWindow_MouseWheel">
                                             <StackPanel Orientation="Horizontal">
                                                 <Image Source="{Binding AuthorIcon}" Width="24" Height="24"/>
                                                 <TextBlock Margin="5,0,0,0" VerticalAlignment="Center">
@@ -250,7 +256,13 @@
                                                     <Run Text="{Binding Created}"/>
                                                 </TextBlock>
                                             </StackPanel>
-                                            <markdig:MarkdownViewer Markdown="{Binding Body}" />
+                                            <markdig:MarkdownViewer Markdown="{Binding Body}" IsTabStop="False">
+                                                <markdig:MarkdownViewer.Template>
+                                                    <ControlTemplate TargetType="markdig:MarkdownViewer">
+                                                        <ui:MarkdownContainer Document="{TemplateBinding Document}" MouseWheel="MainWindow_MouseWheel"/>
+                                                    </ControlTemplate>
+                                                </markdig:MarkdownViewer.Template>
+                                            </markdig:MarkdownViewer>
                                         </StackPanel>
                                     </DataTemplate>
                                 </ItemsControl.ItemTemplate>

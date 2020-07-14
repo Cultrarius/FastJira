@@ -1,5 +1,6 @@
 ﻿using Fast_Jira.api;
 using Fast_Jira.Models;
+using Lifti;
 using Microsoft.Rest;
 using Svg;
 using System;
@@ -14,6 +15,9 @@ using System.Net.Http;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
+using System.Threading.Tasks;
+using System.Windows.Media;
+using System.Windows.Media.Imaging;
 
 namespace Fast_Jira.core
 {
@@ -23,6 +27,7 @@ namespace Fast_Jira.core
         const string SessionFolder = "./Cache/Session";
         const string AvatarFolder = "./Cache/Avatars";
         const string ThumbnailFolder = "./Cache/Thumbnails";
+        const string IssuesFolder = "./Cache/Issues";
 
         private static readonly NLog.Logger logger = NLog.LogManager.GetCurrentClassLogger();
 
@@ -32,16 +37,33 @@ namespace Fast_Jira.core
 
         private readonly ConcurrentDictionary<string, CachedImage> CachedImages = new ConcurrentDictionary<string, CachedImage>();
         private readonly ConcurrentDictionary<string, Issue> CachedIssues = new ConcurrentDictionary<string, Issue>();
+        private readonly ConcurrentDictionary<string, Task<Issue>> PrefetchIssues = new ConcurrentDictionary<string, Task<Issue>>();
+        private readonly SearchEngine SearchEngine = new SearchEngine();
 
         public Issue DisplayedIssue
         {
             get => displayedIssue;
             set
             {
-                if (displayedIssue != value)
+                if (displayedIssue == value)
                 {
-                    displayedIssue = value;
-                    WriteDisplayedIssue();
+                    return;
+                }
+                displayedIssue = value;
+                if (value == null)
+                {
+                    return;
+                }
+                if (!displayedIssue.DisplayInHistory)
+                {
+                    displayedIssue.DisplayInHistory = true;
+                    WriteIssueToDisk(displayedIssue);
+                }
+
+                string jsonString = JsonSerializer.Serialize(displayedIssue);
+                lock (this)
+                {
+                    File.WriteAllText(SessionFolder + "/displayedIssue.json", jsonString);
                 }
             }
         }
@@ -52,30 +74,27 @@ namespace Fast_Jira.core
             Directory.CreateDirectory(SessionFolder);
             Directory.CreateDirectory(AvatarFolder);
             Directory.CreateDirectory(ThumbnailFolder);
+            Directory.CreateDirectory(IssuesFolder);
         }
 
         private void ReadCachedIssues()
         {
-            string issuesFile = CacheFolder + "/issues.json";
-            if (File.Exists(issuesFile))
+            foreach (string Filename in Directory.EnumerateFiles(IssuesFolder))
             {
-                string jsonString = File.ReadAllText(issuesFile);
-                var References = JsonSerializer.Deserialize<Dictionary<string, Issue>>(jsonString);
-                foreach (var Pair in References)
+                string jsonString = File.ReadAllText(Filename);
+                Issue Issue = JsonSerializer.Deserialize<Issue>(jsonString);
+                if (CachedIssues.ContainsKey(Issue.Key))
                 {
-                    if (CachedIssues.ContainsKey(Pair.Key))
-                    {
-                        continue;
-                    }
-
-                    CachedIssues[Pair.Key] = Pair.Value;
+                    continue;
                 }
+
+                CachedIssues[Issue.Key] = Issue;
             }
         }
 
-        public IEnumerable<Issue> GetAllIssuesSorted()
+        public IEnumerable<Issue> GetAllIssuesSorted(bool HistoryOnly = true)
         {
-            return CachedIssues.Values.OrderByDescending(i => i.LastAccess);
+            return CachedIssues.Values.Where(i => !HistoryOnly || i.DisplayInHistory).OrderByDescending(i => i.LastAccess);
         }
 
         private void ReadCachedImages()
@@ -104,19 +123,20 @@ namespace Fast_Jira.core
         public void InitFromDisk()
         {
             logger.Debug("Reading data cache from disk...");
+            Stopwatch Watch = Stopwatch.StartNew();
             ReadCachedImages();
             ReadCachedIssues();
-            DisplayedIssue = ReadDisplayedIssue();
-            logger.Debug("Data cache initialized.");
+            displayedIssue = ReadDisplayedIssue();
+            Task.Run(() => InitSearchEngine());
+            logger.Debug("Data cache initialized in {0}ms.", Watch.ElapsedMilliseconds);
         }
 
-        public void WriteCacheMetadataToDisk()
+        private async ValueTask InitSearchEngine()
         {
-            lock (this)
+            foreach (var Issue in CachedIssues.Values)
             {
-                File.WriteAllText(CacheFolder + "/images.json", JsonSerializer.Serialize(CachedImages));
-                File.WriteAllText(CacheFolder + "/issues.json", JsonSerializer.Serialize(CachedIssues));
-                WriteDisplayedIssue();
+                string text = Issue.ToFulltextDocument();
+                await SearchEngine.AddToIndex(Issue.Key, text);
             }
         }
 
@@ -131,16 +151,21 @@ namespace Fast_Jira.core
             return null;
         }
 
-        private void WriteDisplayedIssue()
+        public List<Issue> SearchIssues(string SearchText)
         {
-            if (DisplayedIssue != null)
+            var issues = new List<Issue>();
+            if (string.IsNullOrWhiteSpace(SearchText))
             {
-                string jsonString = JsonSerializer.Serialize(DisplayedIssue);
-                lock (this)
+                return issues;
+            }
+            foreach (SearchResult<string> result in SearchEngine.Search(SearchText))
+            {
+                if (HasIssueCached(result.Key))
                 {
-                    File.WriteAllText(SessionFolder + "/displayedIssue.json", jsonString);
+                    issues.Add(GetCachedIssue(result.Key));
                 }
             }
+            return issues;
         }
 
         public bool HasImageCached(string URL)
@@ -152,6 +177,7 @@ namespace Fast_Jira.core
         {
             return CachedIssues.ContainsKey(ID);
         }
+
         public Issue GetCachedIssue(string ID)
         {
             return CachedIssues[ID];
@@ -171,9 +197,67 @@ namespace Fast_Jira.core
             return CachedImages[URL].Data;
         }
 
-        public Issue LoadIssue(string IssueID)
+        public ImageSource GetWrappedImage(string URL)
         {
+            Image Input = GetCachedImage(URL);
+            if (Input == null)
+            {
+                return null;
+            }
+
+            // must be done in the ui thread, because otherwise the image source is not accessible from the ui thread
+            using var ms = new MemoryStream();
+            Input.Save(ms, ImageFormat.Png);
+            ms.Seek(0, SeekOrigin.Begin);
+
+            var BitmapImage = new BitmapImage();
+            BitmapImage.BeginInit();
+            BitmapImage.CacheOption = BitmapCacheOption.OnLoad;
+            BitmapImage.StreamSource = ms;
+            BitmapImage.EndInit();
+
+            return BitmapImage;
+        }
+
+        public void PrefetchIssue(string issueName)
+        {
+            if (string.IsNullOrWhiteSpace(issueName) || issueName.Length > 30 || HasIssueCached(issueName) || PrefetchIssues.ContainsKey(issueName))
+            {
+                return;
+            }
+            // there is a chance for a race condition here, but I don't care.
+            Task<Issue> LoadingTask = new Task<Issue>(() => LoadIssue(issueName, true));
+            PrefetchIssues[issueName] = LoadingTask;
+            logger.Debug("Trying to prefetch issue {0}", issueName);
+
+            try
+            {
+                LoadingTask.RunSynchronously();
+            }
+            finally
+            {
+                PrefetchIssues.Remove(issueName, out LoadingTask);
+            }
+        }
+
+        public Issue LoadIssue(string IssueID, bool IsPrefetch = false)
+        {
+            if (!IsPrefetch && PrefetchIssues.ContainsKey(IssueID))
+            {
+                Task<Issue> PrefetchTask = PrefetchIssues[IssueID];
+                PrefetchTask.Wait();
+                if (PrefetchTask.IsCompletedSuccessfully)
+                {
+                    return PrefetchTask.Result;
+                }
+                else
+                {
+                    throw PrefetchTask.Exception;
+                }
+            }
+
             Stopwatch Watch = Stopwatch.StartNew();
+            logger.Debug("Starting to load issue {0}...", IssueID);
             var IssueTask = JiraAPI.GetIssueWithHttpMessagesAsync(IssueID, Issue.UsedFields);
             if (!IssueTask.Wait(3000))
             {
@@ -182,7 +266,10 @@ namespace Fast_Jira.core
             HttpOperationResponse<IssueBean> Response = IssueTask.Result;
             if (!Response.Response.IsSuccessStatusCode)
             {
-                logger.Error("Request for issue {0} failed. {1}", IssueID, Response.Response);
+                if (!IsPrefetch)
+                {
+                    logger.Error("Request for issue {0} failed. {1}", IssueID, Response.Response);
+                }
                 throw new HttpRequestException("Request failed. StatusCode: " + Response.Response.StatusCode);
             }
             long CoreTime = Watch.ElapsedMilliseconds;
@@ -199,6 +286,7 @@ namespace Fast_Jira.core
 
         private void LoadImage(string URL, string FileName, string TargetFolder)
         {
+            logger.Error("Starting to load image from {0}", URL);
             var AsyncTask = JiraAPI.HttpClient.GetAsync(URL);
             if (!AsyncTask.Wait(3500))
             {
@@ -233,21 +321,32 @@ namespace Fast_Jira.core
             }
 
             string FilePath = TargetFolder + "/" + FileName + ".png";
+            Result.Save(FilePath, ImageFormat.Png);
+
             CachedImages[URL] = new CachedImage()
             {
                 Data = Result,
                 Path = FilePath
             };
-            Result.Save(FilePath, ImageFormat.Png);
-
-            WriteCacheMetadataToDisk();
+            lock (this)
+            {
+                File.WriteAllText(CacheFolder + "/images.json", JsonSerializer.Serialize(CachedImages));
+            }
         }
 
         public void AddCachedIssue(string issueID, Issue issue)
         {
             issue.LastAccess = DateTime.Now;
             CachedIssues[issueID] = issue;
-            WriteCacheMetadataToDisk();
+            WriteIssueToDisk(issue);
+        }
+
+        private void WriteIssueToDisk(Issue issue)
+        {
+            lock (this)
+            {
+                File.WriteAllText(IssuesFolder + "/" + issue.Key + ".json", JsonSerializer.Serialize(issue));
+            }
         }
 
         private void LoadAllResourcesForIssue(Issue NewIssue)
@@ -295,6 +394,10 @@ namespace Fast_Jira.core
 
         private void LoadThumbnail(string Url)
         {
+            if (Url == null)
+            {
+                return;
+            }
             string FileName = new Uri(Url).Segments[^1];
             if (!HasImageCached(Url))
             {
@@ -310,13 +413,13 @@ namespace Fast_Jira.core
                 LoadImage(IconUrl, Type?.Name + "-" + Type?.IconID, AvatarFolder);
             }
         }
-    }
 
-    class CachedImage
-    {
-        public string Path { get; set; }
+        class CachedImage
+        {
+            public string Path { get; set; }
 
-        [JsonIgnore]
-        public Image Data { get; set; }
+            [JsonIgnore]
+            public Image Data { get; set; }
+        }
     }
 }

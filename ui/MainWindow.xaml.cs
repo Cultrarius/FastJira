@@ -1,13 +1,15 @@
 ﻿using Fast_Jira.api;
 using Fast_Jira.core;
+using Fast_Jira.ui;
+using Lifti;
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Drawing.Imaging;
 using System.IO;
-using System.Reflection;
 using System.Text.RegularExpressions;
+using System.Threading;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -28,6 +30,7 @@ namespace Fast_Jira
     {
         private static readonly NLog.Logger logger = NLog.LogManager.GetCurrentClassLogger();
         private readonly DataVault Vault = new DataVault();
+        private SearchWindow SearchWindow;
         private readonly Config AppConfig = new Config();
         private int UpdateTicker = 0;
         private bool SelectionActive = true;
@@ -42,6 +45,21 @@ namespace Fast_Jira
 
             RefreshDisplayedIssue();
             UrlTextbox.Text = Vault.DisplayedIssue?.Key;
+
+            Thread Watchdog = new Thread(WatchClipboard)
+            {
+                IsBackground = true,
+                Priority = ThreadPriority.Lowest
+            };
+            if (Watchdog.TrySetApartmentState(ApartmentState.STA))
+            {
+                Watchdog.Start();
+            }
+            else
+            {
+                logger.Error("Unable to set thread state for clipboard watcher");
+            }
+
             logger.Debug("Application startup done.");
         }
 
@@ -53,7 +71,7 @@ namespace Fast_Jira
             {
                 string Hotkey = k <= 9 ? "(" + k + ")" : "";
                 k++;
-                HistoryEntry Entry = new HistoryEntry(Hotkey, Item.Key, Item.Summary, WrapImage(Vault.GetCachedImage(Item.Type.IconUrl)));
+                HistoryEntry Entry = new HistoryEntry(Hotkey, Item.Key, Item.Summary, Vault.GetWrappedImage(Item.Type.IconUrl));
                 HistoryList.Items.Add(Entry);
 
                 if (Item.Key == Vault.DisplayedIssue.Key)
@@ -69,14 +87,88 @@ namespace Fast_Jira
         {
             Style = (Style)FindResource(typeof(Window));
             ProgressBar.IsIndeterminate = false;
-            ICommand SettingsCommand = new RelayCommand(SettingsCommand_Executed);
-            buttonSettings.Command = SettingsCommand;
+
+            buttonSettings.Command = new RelayCommand(SettingsCommand_Executed);
+            buttonBrowser.Command = new RelayCommand(BrowserCommand_Executed);
+
             UrlErrorText.Text = "";
             StatusText.Text = "";
+            UrlTextbox.Focus();
 
+            KeyDown += MainWindow_KeyDown;
+            MouseWheel += MainWindow_MouseWheel;
+            MarkdownViewer.MouseWheel += MainWindow_MouseWheel;
             HistoryList.SelectionChanged += HistoryList_SelectionChanged;
-
             UrlTextbox.KeyDown += UrlTextboxKeyDownHandler;
+            DescriptionScrollView.ScrollChanged += DescriptionScrollView_ScrollChanged;
+        }
+
+        private void MainWindow_MouseWheel(object sender, MouseWheelEventArgs e)
+        {
+            if (e.Delta != 0)
+            {
+                double CurrentOffset = DescriptionScrollView.VerticalOffset;
+                double TargetScroll = Math.Clamp(CurrentOffset - e.Delta, 0, DescriptionScrollView.ScrollableHeight);
+                DescriptionScrollView.ScrollToVerticalOffset(TargetScroll);
+                e.Handled = true;
+            }
+        }
+
+        private void DescriptionScrollView_ScrollChanged(object sender, ScrollChangedEventArgs e)
+        {
+            if (Vault.DisplayedIssue != null)
+            {
+                Vault.DisplayedIssue.DescriptionScrollPosition = e.VerticalOffset;
+            }
+        }
+
+        private void MainWindow_KeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Key == Key.V && (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control && Clipboard.ContainsText())
+            {
+                string Content = Clipboard.GetText().Trim();
+                UrlTextbox.Text = Content;
+                UrlTextCommitted();
+                e.Handled = true;
+            }
+            if (e.Key == Key.F && (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control)
+            {
+                if (SearchWindow == null)
+                {
+                    SearchWindow = new SearchWindow()
+                    {
+                        Vault = Vault,
+                        Owner = this
+                    };
+                    SearchWindow.SearchResultSelected += SearchWindow_SearchResultSelected;
+                }
+                SearchWindow.Display();
+                e.Handled = true;
+            }
+
+            for (int i = 0; i < 9; i++)
+            {
+                Key key = (Key)(i + (int)Key.D1);
+                if (e.Key == key && HistoryList.Items.Count >= i + 1)
+                {
+                    HistoryList.SelectedIndex = i;
+                }
+            }
+
+            if (e.Key == Key.F5 && Vault.DisplayedIssue?.Key != null)
+            {
+                IssueDisplayRequested(Vault.DisplayedIssue?.Key, true);
+            }
+        }
+
+        private void SearchWindow_SearchResultSelected(string SelectedIssueKey)
+        {
+            if (Vault.HasIssueCached(SelectedIssueKey))
+            {
+                Vault.DisplayedIssue = Vault.GetCachedIssue(SelectedIssueKey);
+                RefreshDisplayedIssue();
+                Focus();
+            }
         }
 
         private void HistoryList_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -132,7 +224,7 @@ namespace Fast_Jira
                         AuthorName = Comment.Author?.DisplayName,
                         Body = Comment.Body,
                         Created = FormatTime(Comment.Created),
-                        AuthorIcon = WrapImage(Vault.GetCachedImage(Comment.Author?.AvatarUrl))
+                        AuthorIcon = Vault.GetWrappedImage(Comment.Author?.AvatarUrl)
                     };
                     CommentList.Items.Add(Details);
                 }
@@ -164,10 +256,11 @@ namespace Fast_Jira
 
             SummaryText.Text = Vault.DisplayedIssue?.Summary == null ? "- issue summary missing -" : Vault.DisplayedIssue.Summary;
             MarkdownViewer.Markdown = Vault.DisplayedIssue?.Description;
+            DescriptionScrollView.ScrollToVerticalOffset(Vault.DisplayedIssue == null ? 0 : Vault.DisplayedIssue.DescriptionScrollPosition);
 
             RefreshIssueHistory();
 
-            logger.Debug("UI refresh done in {0}ms", Watch.ElapsedMilliseconds);
+            logger.Trace("UI refresh done in {0}ms", Watch.ElapsedMilliseconds);
         }
 
         private void RefreshAttachments()
@@ -186,7 +279,7 @@ namespace Fast_Jira
                     ImageSource Source;
                     if (!string.IsNullOrWhiteSpace(Attachment.Thumbnail) && Vault.HasImageCached(Attachment.Thumbnail))
                     {
-                        Source = WrapImage(Vault.GetCachedImage(Attachment.Thumbnail));
+                        Source = Vault.GetWrappedImage(Attachment.Thumbnail);
                     }
                     else
                     {
@@ -208,7 +301,7 @@ namespace Fast_Jira
         {
             if (Vault.HasImageCached(IconUrl))
             {
-                Element.Source = WrapImage(Vault.GetCachedImage(IconUrl));
+                Element.Source = Vault.GetWrappedImage(IconUrl);
                 Element.Visibility = Visibility.Visible;
             }
             else
@@ -216,27 +309,6 @@ namespace Fast_Jira
                 Element.Source = null;
                 Element.Visibility = Visibility.Collapsed;
             }
-        }
-
-        private ImageSource WrapImage(System.Drawing.Image Input)
-        {
-            if (Input == null)
-            {
-                return null;
-            }
-
-            // must be done in the ui thread, because otherwise the image source is not accessible from the ui thread
-            using var ms = new MemoryStream();
-            Input.Save(ms, ImageFormat.Png);
-            ms.Seek(0, SeekOrigin.Begin);
-
-            var BitmapImage = new BitmapImage();
-            BitmapImage.BeginInit();
-            BitmapImage.CacheOption = BitmapCacheOption.OnLoad;
-            BitmapImage.StreamSource = ms;
-            BitmapImage.EndInit();
-
-            return BitmapImage;
         }
 
         private Brush GetStatusColor(string color)
@@ -270,43 +342,48 @@ namespace Fast_Jira
         {
             if (e.Key == Key.Return && !string.IsNullOrWhiteSpace(UrlTextbox.Text))
             {
-                UrlErrorText.Text = "";
-                string IssueName = UrlTextbox.Text;
-                if (IssueName.StartsWith("http"))
-                {
-                    if (!IssueName.StartsWith(AppConfig.JiraServer))
-                    {
-                        UrlErrorText.Text = "You can only see issues from your configured server (" + AppConfig.JiraServer + ").";
-                        return;
-                    }
-                    string[] segments = new Uri(IssueName).Segments;
-                    if (segments.Length == 0)
-                    {
-                        UrlErrorText.Text = "Whatever that is, it's not a valid url to a jira issue.";
-                        return;
-                    }
-                    IssueName = segments[^1];
-                }
-
-                if (!Regex.IsMatch(IssueName, @"^[^-]+-\d+$"))
-                {
-                    UrlErrorText.Text = "Mate, that does not look like the name of a jira issue.";
-                    return;
-                }
-                UrlTextbox.Text = IssueName;
-
-                IssueDisplayRequested(IssueName);
+                UrlTextCommitted();
             }
         }
 
-        private void IssueDisplayRequested(string IssueName)
+        private void UrlTextCommitted()
+        {
+            UrlErrorText.Text = "";
+            string IssueName = UrlTextbox.Text.Trim();
+            if (IssueName.StartsWith("http"))
+            {
+                if (!IssueName.StartsWith(AppConfig.JiraServer))
+                {
+                    UrlErrorText.Text = "You can only see issues from your configured server (" + AppConfig.JiraServer + ").";
+                    return;
+                }
+                string[] segments = new Uri(IssueName).Segments;
+                if (segments.Length == 0)
+                {
+                    UrlErrorText.Text = "Whatever that is, it's not a valid url to a jira issue.";
+                    return;
+                }
+                IssueName = segments[^1];
+            }
+
+            if (!Regex.IsMatch(IssueName, @"^[^-]+-\d+$"))
+            {
+                UrlErrorText.Text = "Mate, that does not look like the name of a jira issue.";
+                return;
+            }
+            UrlTextbox.Text = IssueName;
+
+            IssueDisplayRequested(IssueName);
+        }
+
+        private void IssueDisplayRequested(string IssueName, bool ForceUpdate = false)
         {
             if (Vault.HasIssueCached(IssueName))
             {
                 // check if the issue has become stale (after 1 day) and refresh it if that is the case
                 Issue CachedIssue = Vault.GetCachedIssue(IssueName);
                 DateTime LastAccessed = CachedIssue.LastAccess;
-                if (LastAccessed == null || DateTime.Now.Subtract(LastAccessed).TotalDays >= 1) //TODO: put amount in config
+                if (ForceUpdate || LastAccessed == null || DateTime.Now.Subtract(LastAccessed).TotalDays >= 1) //TODO: put amount in config
                 {
                     LoadIssue(IssueName);
                 }
@@ -407,6 +484,51 @@ namespace Fast_Jira
                 AppConfig = AppConfig
             };
             SettingsWindow.ShowDialog();
+            ConfigureClient();
+        }
+
+        private void BrowserCommand_Executed(object parameter)
+        {
+            if (string.IsNullOrWhiteSpace(Vault.DisplayedIssue?.Key) || !AppConfig.JiraServer.StartsWith("http"))
+            {
+                return;
+            }
+            string url = AppConfig.JiraServer + (AppConfig.JiraServer.EndsWith('/') ? "" : "/") + "browse/" + Vault.DisplayedIssue.Key;
+            Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
+        }
+
+        private void WatchClipboard()
+        {
+            while (true)
+            {
+                if (Clipboard.ContainsText())
+                {
+                    string Content = Clipboard.GetText().Trim();
+                    try
+                    {
+                        string issueName = "";
+                        if (Content.StartsWith(AppConfig.JiraServer))
+                        {
+                            string[] segments = new Uri(Content).Segments;
+                            if (segments.Length > 0)
+                            {
+                                issueName = segments[^1];
+                            }
+                        }
+                        else if (Regex.IsMatch(Content, @"^[^-]+-\d+$"))
+                        {
+                            issueName = Content;
+                        }
+
+                        Vault.PrefetchIssue(issueName);
+                    }
+                    catch (Exception e)
+                    {
+                        logger.Trace(e, "Clipboard exception");
+                    }
+                    Thread.Sleep(1000);
+                }
+            }
         }
     }
 
