@@ -4,7 +4,7 @@ using System.Text;
 using System.Windows.Controls;
 using System.Windows.Input;
 
-namespace Fast_Jira.ui
+namespace FastJira.ui
 {
     public class DelegatingScrollViewer : ScrollViewer
     {

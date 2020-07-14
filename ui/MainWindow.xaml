@@ -1,9 +1,9 @@
-﻿<Window x:Class="Fast_Jira.ui.MainWindow"
+﻿<Window x:Class="FastJira.ui.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        xmlns:ui="clr-namespace:Fast_Jira.ui"
+        xmlns:ui="clr-namespace:FastJira.ui"
         xmlns:markdig="clr-namespace:Markdig.Wpf;assembly=Markdig.Wpf"
         mc:Ignorable="d"
         Title="Fast Jira" Height="800" Width="1200" WindowStartupLocation="CenterScreen">

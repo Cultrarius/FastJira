@@ -1,8 +1,8 @@
 ﻿using System;
 using System.Windows;
-using Fast_Jira.core;
+using FastJira.core;
 
-namespace Fast_Jira.ui
+namespace FastJira.ui
 {
     /// <summary>
     /// Interaction logic for Settings.xaml
@@ -18,6 +18,9 @@ namespace Fast_Jira.ui
                 JiraUrlInput.Text = value.JiraServer;
                 JiraUserInput.Text = value.JiraUser;
                 JiraPasswordInput.Password = value.JiraPassword;
+                ProxyServerInput.Text = value.ProxyServer;
+                ProxyUserInput.Text = value.ProxyUser;
+                ProxyPasswordInput.Password = value.ProxyPassword;
             } 
         }
 
@@ -47,6 +50,9 @@ namespace Fast_Jira.ui
             AppConfig.JiraServer = JiraUrlInput.Text;
             AppConfig.JiraUser = JiraUserInput.Text;
             AppConfig.JiraPassword = JiraPasswordInput.Password;
+            AppConfig.ProxyServer = ProxyServerInput.Text;
+            AppConfig.ProxyUser = ProxyUserInput.Text;
+            AppConfig.ProxyPassword = ProxyPasswordInput.Password;
 
             try
             {

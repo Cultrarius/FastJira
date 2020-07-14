@@ -1,11 +1,11 @@
-﻿using Fast_Jira.core;
+﻿using FastJira.core;
 using System;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 
-namespace Fast_Jira.ui
+namespace FastJira.ui
 {
     public delegate void SearchResultSelectedEventHandler(string selectedIssueKey);
 

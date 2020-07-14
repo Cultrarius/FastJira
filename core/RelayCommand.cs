@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Windows.Input;
 
-namespace Fast_Jira.core
+namespace FastJira.core
 {
     public class RelayCommand : ICommand
     {

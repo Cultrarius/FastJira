@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 
-namespace Fast_Jira.core
+namespace FastJira.core
 {
     public class SearchEngine
     {

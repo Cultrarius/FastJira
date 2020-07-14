@@ -1,5 +1,5 @@
-﻿using Fast_Jira.api;
-using Fast_Jira.Models;
+﻿using FastJira.api;
+using FastJira.Models;
 using Lifti;
 using Microsoft.Rest;
 using Svg;
@@ -11,6 +11,7 @@ using System.Drawing;
 using System.Drawing.Imaging;
 using System.IO;
 using System.Linq;
+using System.Net;
 using System.Net.Http;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -19,7 +20,7 @@ using System.Threading.Tasks;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 
-namespace Fast_Jira.core
+namespace FastJira.core
 {
     public class DataVault
     {
@@ -30,7 +31,7 @@ namespace Fast_Jira.core
         private const string IssuesFolder = "./Cache/Issues";
 
         private static readonly NLog.Logger Logger = NLog.LogManager.GetCurrentClassLogger();
-        public readonly JiraAPI JiraApi = new JiraAPI(new ClientCredentials(), new HttpClientHandler(), new DelegatingHandler[0]);
+        public JiraAPI JiraApi;
 
         private Issue _displayedIssue;
 
@@ -74,6 +75,23 @@ namespace Fast_Jira.core
             Directory.CreateDirectory(AvatarFolder);
             Directory.CreateDirectory(ThumbnailFolder);
             Directory.CreateDirectory(IssuesFolder);
+        }
+
+        public void ConfigureApi(Config config)
+        {
+            var clientHandler = new HttpClientHandler();
+            if (!string.IsNullOrWhiteSpace(config.ProxyServer))
+            {
+                var proxy = new WebProxy(new Uri(config.ProxyServer));
+                if (!string.IsNullOrWhiteSpace(config.ProxyUser))
+                {
+                    proxy.Credentials = new NetworkCredential(config.ProxyUser, config.ProxyPassword);
+                }
+                clientHandler.Proxy = proxy;
+            }
+
+            var clientCredentials = new ClientCredentials {Username = config.JiraUser, Password = config.JiraPassword};
+            JiraApi = new JiraAPI(new Uri(config.JiraServer), clientCredentials, clientHandler);
         }
 
         private void ReadCachedIssues()

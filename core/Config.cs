@@ -1,13 +1,16 @@
 ﻿using System.Configuration;
 using System.Reflection;
 
-namespace Fast_Jira.core
+namespace FastJira.core
 {
     public class Config
     {
         public string JiraUser { get; set; }
         public string JiraPassword { get; set; }
         public string JiraServer { get; set; }
+        public string ProxyServer { get; set; }
+        public string ProxyUser { get; set; }
+        public string ProxyPassword { get; set; }
 
         public Config()
         {
@@ -19,6 +22,9 @@ namespace Fast_Jira.core
             JiraUser = GetString("JiraUser");
             JiraPassword = GetString("JiraPassword");
             JiraServer = GetString("JiraServer");
+            ProxyServer = GetString("ProxyServer");
+            ProxyUser = GetString("ProxyUser");
+            ProxyPassword = GetString("ProxyPassword");
         }
 
         public void SaveToDisk()
@@ -28,6 +34,9 @@ namespace Fast_Jira.core
             SetString(config, "JiraUser", JiraUser);
             SetString(config, "JiraPassword", JiraPassword);
             SetString(config, "JiraServer", JiraServer);
+            SetString(config, "ProxyServer", ProxyServer);
+            SetString(config, "ProxyUser", ProxyUser);
+            SetString(config, "ProxyPassword", ProxyPassword);
 
             config.Save(ConfigurationSaveMode.Modified);
         }

@@ -9,10 +9,9 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
-using Fast_Jira.api;
-using Fast_Jira.core;
+using FastJira.core;
 
-namespace Fast_Jira.ui
+namespace FastJira.ui
 {
     public static class Constants
     {
@@ -34,7 +33,7 @@ namespace Fast_Jira.ui
         public MainWindow()
         {
             _vault.InitFromDisk();
-            ConfigureClient();
+            _vault.ConfigureApi(_appConfig);
 
             InitializeComponent();
             ConfigureUi();
@@ -178,14 +177,6 @@ namespace Fast_Jira.ui
                     IssueDisplayRequested(selected.IssueKey);
                 }
             }
-        }
-
-        private void ConfigureClient()
-        {
-            ClientCredentials credentials = _vault.JiraApi.Credentials as ClientCredentials;
-            credentials.Username = _appConfig.JiraUser;
-            credentials.Password = _appConfig.JiraPassword;
-            _vault.JiraApi.BaseUri = new Uri(_appConfig.JiraServer);
         }
 
         private string FormatTime(DateTime? input)
@@ -477,7 +468,7 @@ namespace Fast_Jira.ui
                 AppConfig = _appConfig
             };
             settingsWindow.ShowDialog();
-            ConfigureClient();
+            _vault.ConfigureApi(_appConfig);
         }
 
         private void BrowserCommand_Executed(object parameter)
@@ -499,21 +490,18 @@ namespace Fast_Jira.ui
                     string content = Clipboard.GetText().Trim();
                     try
                     {
-                        string issueName = "";
                         if (content.StartsWith(_appConfig.JiraServer))
                         {
                             string[] segments = new Uri(content).Segments;
                             if (segments.Length > 0)
                             {
-                                issueName = segments[^1];
+                                _vault.PrefetchIssue(segments[^1]);
                             }
                         }
                         else if (Regex.IsMatch(content, @"^[^-]+-\d+$"))
                         {
-                            issueName = content;
+                            _vault.PrefetchIssue(content);
                         }
-
-                        _vault.PrefetchIssue(issueName);
                     }
                     catch (Exception e)
                     {

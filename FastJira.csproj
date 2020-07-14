@@ -3,10 +3,15 @@
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>netcoreapp3.1</TargetFramework>
-    <RootNamespace>Fast_Jira</RootNamespace>
+    <RootNamespace>FastJira</RootNamespace>
     <UseWPF>true</UseWPF>
-    <StartupObject>Fast_Jira.App</StartupObject>
+    <StartupObject>FastJira.App</StartupObject>
     <ApplicationIcon>Images\zap.ico</ApplicationIcon>
+    <AssemblyName>FastJira</AssemblyName>
+    <Copyright>Michael Galetzka</Copyright>
+    <RepositoryUrl>https://github.com/Cultrarius/Fast-Jira</RepositoryUrl>
+    <PackageProjectUrl>https://github.com/Cultrarius/Fast-Jira</PackageProjectUrl>
+    <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
   </PropertyGroup>
 
   <ItemGroup>
@@ -41,6 +46,10 @@
   <ItemGroup>
     <PackageReference Include="Lifti.Core" Version="2.0.0-beta9" />
     <PackageReference Include="Markdig.Wpf" Version="0.3.1" />
+    <PackageReference Include="Microsoft.CodeAnalysis.FxCopAnalyzers" Version="2.9.6">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
     <PackageReference Include="Microsoft.Rest.ClientRuntime" Version="2.3.21" />
     <PackageReference Include="NLog" Version="4.7.2" />
     <PackageReference Include="Svg" Version="3.1.1" />

@@ -2,7 +2,7 @@
 // Changes may cause incorrect behavior and will be lost if the code is
 // regenerated.
 
-namespace Fast_Jira.Models
+namespace FastJira.Models
 {
     using System;
     using System.Linq;

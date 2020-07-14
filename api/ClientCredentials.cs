@@ -5,7 +5,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace Fast_Jira.api
+namespace FastJira.api
 {
     public class ClientCredentials : ServiceClientCredentials
     {
