@@ -451,5 +451,202 @@ namespace FastJira
             return _result;
         }
 
+        /// <summary>
+        /// Search for issues using JQL (GET)
+        /// </summary>
+        /// Searches for issues using [JQL](https://confluence.atlassian.com/x/egORLQ).
+        /// 
+        /// If the JQL query expression is too large to be encoded as a query
+        /// parameter, use the [POST](#api-rest-api-3-search-post) version of this
+        /// resource.
+        /// 
+        /// This operation can be accessed anonymously.
+        /// 
+        /// **[Permissions](#permissions) required:** Issues are included in the
+        /// response where the user has:
+        /// 
+        /// *  *Browse projects* [project
+        /// permission](https://confluence.atlassian.com/x/yodKLg) for the project
+        /// containing the issue.
+        /// *  If [issue-level security](https://confluence.atlassian.com/x/J4lKLg)
+        /// is configured, issue-level security permission to view the issue.
+        /// <param name='jql'>
+        /// The [JQL](https://confluence.atlassian.com/x/egORLQ) that defines the
+        /// search. Note:
+        /// 
+        /// *  If no JQL expression is provided, all issues are returned.
+        /// *  `username` and `userkey` cannot be used as search terms due to privacy
+        /// reasons. Use `accountId` instead.
+        /// *  If a user has hidden their email address in their user profile,
+        /// partial matches of the email address will not find the user. An exact
+        /// match is required.
+        /// </param>
+        /// <param name='startAt'>
+        /// The index of the first item to return in a page of results (page offset).
+        /// </param>
+        /// <param name='maxResults'>
+        /// The maximum number of items to return per page. To manage page size, Jira
+        /// may return fewer items per page where a large number of fields are
+        /// requested. The greatest number of items returned per page is achieved
+        /// when requesting `id` or `key` only.
+        /// </param>
+        /// <param name='fields'>
+        /// A list of fields to return for each issue, use it to retrieve a subset of
+        /// fields. This parameter accepts a comma-separated list. Expand options
+        /// include:
+        /// 
+        /// *  `*all` Returns all fields.
+        /// *  `*navigable` Returns navigable fields.
+        /// *  Any issue field, prefixed with a minus to exclude.
+        /// 
+        /// Examples:
+        /// 
+        /// *  `summary,comment` Returns only the summary and comments fields.
+        /// *  `-description` Returns all navigable (default) fields except
+        /// description.
+        /// *  `*all,-comment` Returns all fields except comments.
+        /// 
+        /// This parameter may be specified multiple times. For example,
+        /// `fields=field1,field2&amp;fields=field3`.
+        /// 
+        /// Note: All navigable fields are returned by default. This differs from [GET
+        /// issue](#api-rest-api-3-issue-issueIdOrKey-get) where the default is all
+        /// fields.
+        /// </param>
+        /// <param name='customHeaders'>
+        /// Headers that will be added to request.
+        /// </param>
+        /// <param name='cancellationToken'>
+        /// The cancellation token.
+        /// </param>
+        /// <return>
+        /// A response object containing the response body and response headers.
+        /// </return>
+        public async Task<HttpOperationResponse<SearchResults>> SearchIssuesWithHttpMessagesAsync(string jql = default(string), int? startAt = default(int?), int? maxResults = 50, string fields = default(string), Dictionary<string, List<string>> customHeaders = null, CancellationToken cancellationToken = default(CancellationToken))
+        {
+            // Tracing
+            bool _shouldTrace = ServiceClientTracing.IsEnabled;
+            string _invocationId = null;
+            if (_shouldTrace)
+            {
+                _invocationId = ServiceClientTracing.NextInvocationId.ToString();
+                Dictionary<string, object> tracingParameters = new Dictionary<string, object>();
+                tracingParameters.Add("jql", jql);
+                tracingParameters.Add("startAt", startAt);
+                tracingParameters.Add("maxResults", maxResults);
+                tracingParameters.Add("fields", fields);
+                tracingParameters.Add("cancellationToken", cancellationToken);
+                ServiceClientTracing.Enter(_invocationId, this, "SearchIssues", tracingParameters);
+            }
+            // Construct URL
+            var _baseUrl = this.BaseUri.AbsoluteUri;
+            var _url = new Uri(new Uri(_baseUrl + (_baseUrl.EndsWith("/") ? "" : "/")), "rest/api/latest/search").ToString();
+            List<string> _queryParameters = new List<string>();
+            if (jql != null)
+            {
+                _queryParameters.Add(string.Format("jql={0}", Uri.EscapeDataString(jql)));
+            }
+            if (startAt != null)
+            {
+                _queryParameters.Add(string.Format("startAt={0}", Uri.EscapeDataString(SafeJsonConvert.SerializeObject(startAt, this.SerializationSettings).Trim('"'))));
+            }
+            if (maxResults != null)
+            {
+                _queryParameters.Add(string.Format("maxResults={0}", Uri.EscapeDataString(SafeJsonConvert.SerializeObject(maxResults, this.SerializationSettings).Trim('"'))));
+            }
+            if (fields != null)
+            {
+                _queryParameters.Add(string.Format("fields={0}", Uri.EscapeDataString(fields)));
+            }
+            if (_queryParameters.Count > 0)
+            {
+                _url += "?" + string.Join("&", _queryParameters);
+            }
+            // Create HTTP transport objects
+            HttpRequestMessage _httpRequest = new HttpRequestMessage();
+            HttpResponseMessage _httpResponse = null;
+            _httpRequest.Method = new HttpMethod("GET");
+            _httpRequest.RequestUri = new Uri(_url);
+            // Set Headers
+            if (customHeaders != null)
+            {
+                foreach(var _header in customHeaders)
+                {
+                    if (_httpRequest.Headers.Contains(_header.Key))
+                    {
+                        _httpRequest.Headers.Remove(_header.Key);
+                    }
+                    _httpRequest.Headers.TryAddWithoutValidation(_header.Key, _header.Value);
+                }
+            }
+
+            // Serialize Request
+            string _requestContent = null;
+            // Set Credentials
+            if (this.Credentials != null)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                await this.Credentials.ProcessHttpRequestAsync(_httpRequest, cancellationToken).ConfigureAwait(false);
+            }
+            // Send Request
+            if (_shouldTrace)
+            {
+                ServiceClientTracing.SendRequest(_invocationId, _httpRequest);
+            }
+            cancellationToken.ThrowIfCancellationRequested();
+            _httpResponse = await this.HttpClient.SendAsync(_httpRequest, cancellationToken).ConfigureAwait(false);
+            if (_shouldTrace)
+            {
+                ServiceClientTracing.ReceiveResponse(_invocationId, _httpResponse);
+            }
+            HttpStatusCode _statusCode = _httpResponse.StatusCode;
+            cancellationToken.ThrowIfCancellationRequested();
+            string _responseContent = null;
+            if ((int)_statusCode != 200 && (int)_statusCode != 400 && (int)_statusCode != 401)
+            {
+                var ex = new HttpOperationException(string.Format("Operation returned an invalid status code '{0}'", _statusCode));
+                _responseContent = await _httpResponse.Content.ReadAsStringAsync().ConfigureAwait(false);
+                ex.Request = new HttpRequestMessageWrapper(_httpRequest, _requestContent);
+                ex.Response = new HttpResponseMessageWrapper(_httpResponse, _responseContent);
+                if (_shouldTrace)
+                {
+                    ServiceClientTracing.Error(_invocationId, ex);
+                }
+                _httpRequest.Dispose();
+                if (_httpResponse != null)
+                {
+                    _httpResponse.Dispose();
+                }
+                throw ex;
+            }
+            // Create Result
+            var _result = new HttpOperationResponse<SearchResults>();
+            _result.Request = _httpRequest;
+            _result.Response = _httpResponse;
+            // Deserialize Response
+            if ((int)_statusCode == 200)
+            {
+                _responseContent = await _httpResponse.Content.ReadAsStringAsync().ConfigureAwait(false);
+                try
+                {
+                    _result.Body = SafeJsonConvert.DeserializeObject<SearchResults>(_responseContent, this.DeserializationSettings);
+                }
+                catch (JsonException ex)
+                {
+                    _httpRequest.Dispose();
+                    if (_httpResponse != null)
+                    {
+                        _httpResponse.Dispose();
+                    }
+                    throw new SerializationException("Unable to deserialize the response.", _responseContent, ex);
+                }
+            }
+            if (_shouldTrace)
+            {
+                ServiceClientTracing.Exit(_invocationId, _result);
+            }
+            return _result;
+        }
+
     }
 }

@@ -16,9 +16,11 @@ using System.Net.Http;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using NLog.Fluent;
 
 namespace FastJira.core
 {
@@ -29,15 +31,20 @@ namespace FastJira.core
         private const string AvatarFolder = "./Cache/Avatars";
         private const string ThumbnailFolder = "./Cache/Thumbnails";
         private const string IssuesFolder = "./Cache/Issues";
+        private const string SearchFolder = "./Cache/Search";
+        private const string AttachmentsFolder = "./Cache/Attachments";
 
         private static readonly NLog.Logger Logger = NLog.LogManager.GetCurrentClassLogger();
-        public JiraAPI JiraApi;
+        public JiraAPI JiraApi { get; set; }
 
         private Issue _displayedIssue;
+        private SearchIndexData _searchIndexData;
 
         private readonly ConcurrentDictionary<string, CachedImage> _cachedImages = new ConcurrentDictionary<string, CachedImage>();
         private readonly ConcurrentDictionary<string, Issue> _cachedIssues = new ConcurrentDictionary<string, Issue>();
+        private readonly ConcurrentDictionary<string, Issue> _searchableIssues = new ConcurrentDictionary<string, Issue>();
         private readonly ConcurrentDictionary<string, Task<Issue>> _prefetchIssues = new ConcurrentDictionary<string, Task<Issue>>();
+        private readonly ConcurrentDictionary<Uri, bool> _activeDownloads = new ConcurrentDictionary<Uri, bool>();
         private readonly SearchEngine _searchEngine = new SearchEngine();
 
         public Issue DisplayedIssue
@@ -75,6 +82,8 @@ namespace FastJira.core
             Directory.CreateDirectory(AvatarFolder);
             Directory.CreateDirectory(ThumbnailFolder);
             Directory.CreateDirectory(IssuesFolder);
+            Directory.CreateDirectory(SearchFolder);
+            Directory.CreateDirectory(AttachmentsFolder);
         }
 
         public void ConfigureApi(Config config)
@@ -90,7 +99,7 @@ namespace FastJira.core
                 clientHandler.Proxy = proxy;
             }
 
-            var clientCredentials = new ClientCredentials {Username = config.JiraUser, Password = config.JiraPassword};
+            var clientCredentials = new ClientCredentials { Username = config.JiraUser, Password = config.JiraPassword };
             JiraApi = new JiraAPI(new Uri(config.JiraServer), clientCredentials, clientHandler);
         }
 
@@ -139,31 +148,167 @@ namespace FastJira.core
 
         public void InitFromDisk()
         {
-            Logger.Debug("Reading data cache from disk...");
+            Logger.Info("Reading data cache from disk...");
             var watch = Stopwatch.StartNew();
             ReadCachedImages();
             ReadCachedIssues();
             _displayedIssue = ReadDisplayedIssue();
-            Task.Run(InitSearchEngine);
+            _searchIndexData = ReadSearchIndexSessionData();
             Logger.Debug("Data cache initialized in {0}ms.", watch.ElapsedMilliseconds);
         }
 
-        private async ValueTask InitSearchEngine()
+        public async void IndexServerForSearch(Config config)
         {
-            foreach (var issue in _cachedIssues.Values)
+            try
             {
-                string text = issue.ToFulltextDocument();
-                await _searchEngine.AddToIndex(issue.Key, text);
+                Logger.Info("Starting full-text search update from server...");
+                var watch = Stopwatch.StartNew();
+
+                var projects = new HashSet<string>();
+                foreach (Issue issue in _cachedIssues.Values)
+                {
+                    if (issue.Project?.Key != null)
+                    {
+                        projects.Add("'" + issue.Project.Key + "'");
+                    }
+                }
+                if (projects.Count == 0)
+                {
+                    Logger.Info("Skipping full-text search update since there are no known projects yet.");
+                    return;
+                }
+                string projectsFilter = string.Join(",", projects);
+
+                int daysSinceLastUpdate = 14; // TODO: make configurable
+                if (_searchIndexData != null)
+                {
+                    daysSinceLastUpdate = Math.Clamp((int)Math.Ceiling(DateTime.Now.Subtract(_searchIndexData.LastUpdateTime).TotalDays), 0, daysSinceLastUpdate);
+                }
+
+                if (daysSinceLastUpdate <= 1)
+                {
+                    Logger.Info("Skipping full-text search update since the cached data is still fresh.");
+                    return;
+                }
+                Logger.Info("Indexing issues updated in the last {0} days from projects: {1}", daysSinceLastUpdate, projectsFilter);
+
+                string jql = "project in (" + projectsFilter + ") and updated >= -" + daysSinceLastUpdate + "d";
+                using var response = SearchIssues(jql, 0);
+                SearchResults initialResult = response.Body;
+                Logger.Debug("{0} issues found for full-text indexing, starting batched download...", initialResult.Total);
+
+                await AddToSearchIndex(initialResult.Issues);
+                int seenIssues = initialResult.Issues.Count;
+                int missing = (initialResult.Total ?? 0) - seenIssues;
+                while (missing > 0)
+                {
+                    Logger.Debug("{0} issues to download...", missing);
+                    using var pagedResponse = SearchIssues(jql, seenIssues);
+                    SearchResults pagedResult = pagedResponse.Body;
+                    if (pagedResult.Issues.Count == 0) break;
+                    await AddToSearchIndex(pagedResult.Issues);
+                    missing -= pagedResult.Issues.Count;
+                    seenIssues += pagedResult.Issues.Count;
+                }
+
+                _searchIndexData = new SearchIndexData()
+                {
+                    LastUpdateTime = DateTime.Now
+                };
+                lock (this)
+                {
+                    File.WriteAllText(SessionFolder + "/searchIndex.json", JsonSerializer.Serialize(_searchIndexData));
+                }
+                Logger.Debug("Downloading search data completed in {0}s.", watch.ElapsedMilliseconds / 1000);
+            }
+            catch (Exception e)
+            {
+                Logger.Error(e, "Error in search index task!");
             }
         }
 
-        private Issue ReadDisplayedIssue()
+        private HttpOperationResponse<SearchResults> SearchIssues(string jql, int startAt)
+        {
+            // TODO: make configurable
+            var issueTask = JiraApi.SearchIssuesWithHttpMessagesAsync(jql, startAt, 100, Issue.SearchableFields);
+            if (!issueTask.Wait(5000))
+            {
+                throw new TimeoutException("Request did not finish in time");
+            }
+
+            if (issueTask.Result.Response.IsSuccessStatusCode)
+            {
+                return issueTask.Result;
+            }
+            Logger.Error("Request for server indexing failed. {1}", issueTask.Result.Response);
+            throw new HttpOperationException("Issue search request failed");
+        }
+
+        private async ValueTask AddToSearchIndex(IList<IssueBean> issueBeans)
+        {
+            List<Issue> issues = new List<Issue>();
+            foreach (var issueBean in issueBeans)
+            {
+                var issue = Issue.FromBean(issueBean);
+                if (_cachedIssues.ContainsKey(issue.Key)) continue; // the cached issue data is probably newer
+                issues.Add(issue);
+                lock (this)
+                {
+                    File.WriteAllText(SearchFolder + "/" + issue.Key + ".json", JsonSerializer.Serialize(issue));
+                }
+                _searchableIssues[issue.Key] = issue;
+            }
+
+            await _searchEngine.AddToIndex(issues);
+        }
+
+        public async ValueTask InitSearchEngine()
+        {
+            try
+            {
+                Logger.Info("Initializing full-text search...");
+                var watch = Stopwatch.StartNew();
+
+                List<Issue> issuesToIndex = new List<Issue>();
+                Stopwatch sw = Stopwatch.StartNew();
+                foreach (string filename in Directory.EnumerateFiles(SearchFolder))
+                {
+                    if (!filename.EndsWith(".json")) continue;
+                    string searchJson = File.ReadAllText(filename);
+                    Issue issue = JsonSerializer.Deserialize<Issue>(searchJson);
+                    issuesToIndex.Add(issue);
+                    _searchableIssues[issue.Key] = issue;
+                }
+                Logger.Debug("Deserialized {0} search documents in {1}ms.", issuesToIndex.Count, sw.ElapsedMilliseconds);
+                issuesToIndex.AddRange(_cachedIssues.Values);
+
+                await _searchEngine.AddToIndex(issuesToIndex);
+                Logger.Debug("Full-text search initialized in {0}ms.", watch.ElapsedMilliseconds);
+            }
+            catch (Exception e)
+            {
+                Logger.Error(e, "Error in full-text search initialization!");
+            }
+        }
+
+        private static Issue ReadDisplayedIssue()
         {
             string fileName = SessionFolder + "/displayedIssue.json";
             if (File.Exists(fileName))
             {
                 string jsonString = File.ReadAllText(fileName);
                 return JsonSerializer.Deserialize<Issue>(jsonString);
+            }
+            return null;
+        }
+
+        private static SearchIndexData ReadSearchIndexSessionData()
+        {
+            string fileName = SessionFolder + "/searchIndex.json";
+            if (File.Exists(fileName))
+            {
+                string jsonString = File.ReadAllText(fileName);
+                return JsonSerializer.Deserialize<SearchIndexData>(jsonString);
             }
             return null;
         }
@@ -176,13 +321,33 @@ namespace FastJira.core
                 return issues;
             }
 
+            var stopwatch = Stopwatch.StartNew();
             foreach (SearchResult<string> result in _searchEngine.Search(searchText))
             {
                 if (HasIssueCached(result.Key))
                 {
                     issues.Add(GetCachedIssue(result.Key));
                 }
+                else if (_searchableIssues.ContainsKey(result.Key))
+                {
+                    issues.Add(_searchableIssues[result.Key]);
+                }
+                else
+                {
+                    Logger.Warn("Inconsistent cache! Issue " + result.Key +
+                                " was found in a search, but is nowhere to be found in the cached data!");
+                }
             }
+            issues.Sort((a, b) =>
+            {
+                int compared = b.LastAccess.CompareTo(a.LastAccess);
+                if (compared == 0)
+                {
+                    return string.Compare(a.Key, b.Key, StringComparison.Ordinal);
+                }
+                return compared;
+            });
+            Logger.Trace("Full-text search for '{0}' performed in {1}ms.", searchText, stopwatch.ElapsedMilliseconds);
             return issues;
         }
 
@@ -271,11 +436,12 @@ namespace FastJira.core
             var watch = Stopwatch.StartNew();
             Logger.Debug("Starting to load issue {0}...", issueId);
             var issueTask = JiraApi.GetIssueWithHttpMessagesAsync(issueId, Issue.UsedFields);
-            if (!issueTask.Wait(3000))
+            if (!issueTask.Wait(5000))
             {
                 throw new TimeoutException("Request did not finish in time");
             }
-            var response = issueTask.Result;
+
+            using HttpOperationResponse<IssueBean> response = issueTask.Result;
             if (!response.Response.IsSuccessStatusCode)
             {
                 if (!isPrefetch)
@@ -296,17 +462,47 @@ namespace FastJira.core
             return newIssue;
         }
 
+        private void LoadFile(Uri uri, string targetPath)
+        {
+            Stopwatch sw = Stopwatch.StartNew();
+            Logger.Debug("Starting to load file from {0}", uri);
+            using HttpRequestMessage httpRequest = new HttpRequestMessage
+            {
+                Method = new HttpMethod("GET"),
+                RequestUri = uri
+            };
+            if (uri.AbsolutePath.StartsWith(JiraApi.BaseUri.AbsolutePath))
+            {
+                JiraApi.Credentials?.ProcessHttpRequestAsync(httpRequest, CancellationToken.None).Wait();
+            }
+            using var result = JiraApi.HttpClient.SendAsync(httpRequest).Result;
+            
+            if (!result.IsSuccessStatusCode)
+            {
+                Logger.Error("Unable to load file {0}: {1}", uri, result);
+                throw new HttpOperationException("Unable to download file (" + result.StatusCode + ")");
+            }
+            Directory.CreateDirectory(Path.GetDirectoryName(targetPath));
+            using var content = result.Content.ReadAsStreamAsync().Result;
+            using var fs = File.Create(targetPath);
+            content.CopyTo(fs);
+            Logger.Debug("Downloaded file {0} in {1}ms", uri, sw.ElapsedMilliseconds);
+        }
+
         private void LoadImage(string url, string fileName, string targetFolder)
         {
-            Logger.Error("Starting to load image from {0}", url);
-            var asyncTask = JiraApi.HttpClient.GetAsync(url);
+            Logger.Debug("Starting to load image from {0}", url);
+
+            var asyncTask = JiraApi.HttpClient.GetAsync(new Uri(url));
             if (!asyncTask.Wait(3500))
             {
                 // TODO: add to config
                 Logger.Error("Timeout while trying to load image from {0}", url);
                 throw new TimeoutException("Unable to load image " + fileName);
             }
-            HttpResponseMessage response = asyncTask.Result;
+
+            using HttpResponseMessage response = asyncTask.Result;
+
             if (!response.IsSuccessStatusCode)
             {
                 Logger.Error("Unable to load image {0}: {1}", url, response);
@@ -346,11 +542,18 @@ namespace FastJira.core
             }
         }
 
-        public void AddCachedIssue(string issueId, Issue issue)
+        private void AddCachedIssue(string issueId, Issue issue)
         {
             issue.LastAccess = DateTime.Now;
+            if (_cachedIssues.ContainsKey(issueId))
+            {
+                // we're just updating the issue, so use some existing values
+                issue.DisplayInHistory = _cachedIssues[issueId].DisplayInHistory;
+                issue.DescriptionScrollPosition = _cachedIssues[issueId].DescriptionScrollPosition;
+            }
             _cachedIssues[issueId] = issue;
             WriteIssueToDisk(issue);
+            Task.Run(() => _searchEngine.AddToIndex(issue));
         }
 
         private void WriteIssueToDisk(Issue issue)
@@ -369,6 +572,20 @@ namespace FastJira.core
             LoadPersonAvatar(newIssue.Reporter);
             LoadCommentAvatars(newIssue.Comments);
             LoadAttachmentThumbnails(newIssue.Attachments);
+            LoadProjectAvatar(newIssue.Project);
+        }
+
+        private void LoadProjectAvatar(Project project)
+        {
+            if (string.IsNullOrWhiteSpace(project?.AvatarUrl))
+            {
+                return;
+            }
+
+            if (!HasImageCached(project.AvatarUrl))
+            {
+                LoadImage(project.AvatarUrl, project.Key + "-" + project.Id, AvatarFolder);
+            }
         }
 
         private void LoadAttachmentThumbnails(List<Attachment> attachments)
@@ -426,6 +643,37 @@ namespace FastJira.core
             }
         }
 
+        public string LoadAttachment(string issueKey, Uri uri)
+        {
+            var attachmentPath = ToAttachmentPath(issueKey, uri);
+            if (!File.Exists(attachmentPath))
+            {
+                if (_activeDownloads.ContainsKey(uri))
+                {
+                    throw new OperationCanceledException("Chill out, it's already downloading!");
+                }
+
+                _activeDownloads[uri] = true;
+
+                try
+                {
+                    LoadFile(uri, attachmentPath);
+                }
+                finally
+                {
+                    bool tmp;
+                    _activeDownloads.Remove(uri, out tmp);
+                }
+            }
+
+            return attachmentPath;
+        }
+
+        private static string ToAttachmentPath(string issueKey, Uri uri)
+        {
+            return AttachmentsFolder + "/" + issueKey + "/" + uri.Segments[^1];
+        }
+
         private class CachedImage
         {
             public string Path { get; set; }
@@ -433,5 +681,10 @@ namespace FastJira.core
             [JsonIgnore]
             public Image Data { get; set; }
         }
+    }
+
+    public class SearchIndexData
+    {
+        public DateTime LastUpdateTime { get; set; }
     }
 }

@@ -21,9 +21,8 @@ namespace FastJira.Models
         /// <summary>
         /// Initializes a new instance of the IssueBean class.
         /// </summary>
-        public IssueBean(string expand = default(string), string id = default(string), string self = default(string), string key = default(string), IDictionary<string, object> properties = default(IDictionary<string, object>), IDictionary<string, string> names = default(IDictionary<string, string>), IDictionary<string, object> fields = default(IDictionary<string, object>))
+        public IssueBean(string id = default(string), string self = default(string), string key = default(string), IDictionary<string, object> properties = default(IDictionary<string, object>), IDictionary<string, string> names = default(IDictionary<string, string>), IDictionary<string, object> fields = default(IDictionary<string, object>))
         {
-            Expand = expand;
             Id = id;
             Self = self;
             Key = key;
@@ -31,13 +30,6 @@ namespace FastJira.Models
             Names = names;
             Fields = fields;
         }
-
-        /// <summary>
-        /// Expand options that include additional issue details in the
-        /// response.
-        /// </summary>
-        [JsonProperty(PropertyName = "expand")]
-        public string Expand { get; private set; }
 
         /// <summary>
         /// The ID of the issue.

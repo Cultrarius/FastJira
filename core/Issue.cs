@@ -11,13 +11,13 @@ namespace FastJira.core
     public class Issue
     {
         public const string UsedFields = "resolution,assignee,reporter,issuetype,status,comment,priority,project,attachment,updated,created,description,summary,issuelinks";
+        public const string SearchableFields = "assignee,reporter,issuetype,description,summary,comment";
 
         // -------- Set by UI ---------------
 
         /// <summary>Last known scrollbar position of the description text</summary>
         public double DescriptionScrollPosition { get; set; }
 
-        /// <summary>Last known scrollbar position of the description text</summary>
         public DateTime LastAccess { get; set; }
 
         /// <summary>This is true only for issues explicitly opened by the user (so prefetched issues are not displayed)</summary>
@@ -70,24 +70,24 @@ namespace FastJira.core
         {
             if (bean == null)
             {
-                return null;
+                return new Issue();
             }
 
-            JObject resolution = (JObject)bean.Fields["resolution"];
+            JObject resolution = bean.Fields.ContainsKey("resolution") ? (JObject)bean.Fields["resolution"] : null;
             JObject assignee = (JObject)bean.Fields["assignee"];
             JObject reporter = (JObject)bean.Fields["reporter"];
-            JObject issuetype = (JObject)bean.Fields["issuetype"];
-            JObject status = (JObject)bean.Fields["status"];
+            JObject issuetype = bean.Fields.ContainsKey("issuetype") ? (JObject)bean.Fields["issuetype"] : null;
+            JObject status = bean.Fields.ContainsKey("status") ? (JObject)bean.Fields["status"] : null;
             JObject comment = (JObject)bean.Fields["comment"];
-            JObject priority = (JObject)bean.Fields["priority"];
-            JObject project = (JObject)bean.Fields["project"];
-            JArray attachment = (JArray)bean.Fields["attachment"];
-            DateTime updated = (DateTime)bean.Fields["updated"];
-            DateTime created = (DateTime)bean.Fields["created"];
+            JObject priority = bean.Fields.ContainsKey("priority") ? (JObject)bean.Fields["priority"] : null;
+            JObject project = bean.Fields.ContainsKey("project") ? (JObject)bean.Fields["project"] : null;
+            JArray attachment = bean.Fields.ContainsKey("attachment") ? (JArray)bean.Fields["attachment"] : null;
+            DateTime updated = bean.Fields.ContainsKey("updated") ? (DateTime)bean.Fields["updated"] : DateTime.Now;
+            DateTime created = bean.Fields.ContainsKey("created") ? (DateTime)bean.Fields["created"] : DateTime.Now;
             string description = (string)bean.Fields["description"];
             string summary = (string)bean.Fields["summary"];
 
-            Issue issue = new Issue()
+            Issue issue = new Issue
             {
                 Id = bean.Id,
                 Key = bean.Key,
@@ -102,15 +102,18 @@ namespace FastJira.core
                 Type = new IssueType(issuetype),
                 Priority = new IssueType(priority),
                 Project = new Project(project),
+                Attachments = new List<Attachment>(),
             };
 
             //TODO: issuelinks, subtasks, CustomFields?
 
-            issue.Attachments = new List<Attachment>();
-            foreach (JToken attachmentField in attachment)
+            if (attachment != null)
             {
-                Attachment newAttachment = new Attachment(attachmentField);
-                issue.Attachments.Add(newAttachment);
+                foreach (JToken attachmentField in attachment)
+                {
+                    Attachment newAttachment = new Attachment(attachmentField);
+                    issue.Attachments.Add(newAttachment);
+                }
             }
 
             JArray commentList = comment?.Value<JArray>("comments");
@@ -150,11 +153,11 @@ namespace FastJira.core
             });
             return fixedMarkdown;
         }
-
+        
         public string ToFulltextDocument()
         {
             StringBuilder sb = new StringBuilder();
-            sb.Append(string.Join("\n", Key, Description, Summary, Assignee.DisplayName, Reporter.DisplayName));
+            sb.Append(string.Join("\n", Key, Description, Summary, Assignee?.DisplayName ?? "", Reporter?.DisplayName ?? ""));
             if (Comments != null)
             {
                 foreach (Comment comment in Comments)
@@ -164,6 +167,26 @@ namespace FastJira.core
                 }
             }
             return sb.ToString();
+        }
+
+        public override bool Equals(object obj)
+        {
+            return obj is Issue issue && issue.Key.Equals(Key);
+        }
+
+        public override int GetHashCode()
+        {
+            return Key.GetHashCode();
+        }
+
+        public static bool operator ==(Issue left, Issue right)
+        {
+            return left.Equals(right);
+        }
+
+        public static bool operator !=(Issue left, Issue right)
+        {
+            return !(left == right);
         }
     }
 

@@ -53,10 +53,12 @@ namespace FastJira.ui
                 case Key.Down:
                     _selectionIndex++;
                     ResultList.SelectedIndex = Math.Min(ResultList.Items.Count - 1, _selectionIndex);
+                    ResultList.ScrollIntoView(ResultList.SelectedItem);
                     break;
                 case Key.Up:
                     _selectionIndex--;
-                    ResultList.SelectedIndex = Math.Min(ResultList.Items.Count - 1, _selectionIndex);
+                    ResultList.SelectedIndex = Math.Max(ResultList.Items.Count == 0 ? -1 : 0, _selectionIndex);
+                    ResultList.ScrollIntoView(ResultList.SelectedItem);
                     break;
                 default:
                 {
@@ -71,21 +73,26 @@ namespace FastJira.ui
                             ResultList.Visibility = Visibility.Collapsed;
                             ResultEmptyText.Visibility = Visibility.Visible;
                         }
+                        else
+                        {
+                            SearchText.Background = Brushes.LightPink;
+                        }
                     }
                     else
                     {
+                        SearchText.Background = Brushes.White;
                         ResultList.Items.Clear();
                         ResultList.Visibility = Visibility.Visible;
                         ResultEmptyText.Visibility = Visibility.Collapsed;
 
-                        for (int i = 0; i < resultIssues.Count && i < 12; i++)
+                        for (int i = 0; i < resultIssues.Count && i < 20; i++)
                         {
                             Issue issue = resultIssues[i];
                             string assigneeText = "(" + (issue.Assignee?.DisplayName ?? "Unassigned") + ")";
                             ResultEntry entry = new ResultEntry(issue.Key, issue.Summary, assigneeText, Vault.GetWrappedImage(issue.Type?.IconUrl));
                             ResultList.Items.Add(entry);
                         }
-                        ResultList.SelectedIndex = Math.Min(resultIssues.Count - 1, _selectionIndex);
+                        ResultList.SelectedIndex = Math.Clamp(_selectionIndex, 0, resultIssues.Count - 1);
                     }
                     break;
                 }

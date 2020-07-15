@@ -16,8 +16,8 @@
         </Grid.RowDefinitions>
 
         <Label Content="Search for issue:" HorizontalAlignment="Left" Margin="10,10,0,0" VerticalAlignment="Top"/>
-        <TextBox x:Name="SearchText" Grid.Row="1" Margin="10,0,10,0"/>
-        <ListBox x:Name="ResultList" Grid.Row="2" Margin="10">
+        <TextBox x:Name="SearchText" Grid.Row="1" Margin="10,0,10,0" />
+        <ListBox x:Name="ResultList" Grid.Row="2" Margin="10" ScrollViewer.VerticalScrollBarVisibility="Auto" MaxHeight="400">
             <ListBox.ItemContainerStyle>
                 <Style TargetType="ListBoxItem">
                     <Setter Property="FocusVisualStyle" Value="{x:Null}" />
@@ -42,7 +42,7 @@
             </ListBox.ItemContainerStyle>
             <ListBox.ItemTemplate>
                 <DataTemplate>
-                    <Grid Margin="5,2,0,2" MaxWidth="560">
+                    <Grid Margin="5,2,0,2" MaxWidth="550">
                         <Grid.RowDefinitions>
                             <RowDefinition Height="20"/>
                             <RowDefinition />

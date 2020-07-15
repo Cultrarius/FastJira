@@ -17,6 +17,7 @@
   <ItemGroup>
     <None Remove="Images\external-link.png" />
     <None Remove="Images\file.png" />
+    <None Remove="Images\search.png" />
     <None Remove="Images\sliders.png" />
   </ItemGroup>
 
@@ -30,6 +31,9 @@
 
   <ItemGroup>
     <Resource Include="Images\file.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Resource>
+    <Resource Include="Images\search.png">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Resource>
     <Resource Include="Images\sliders.png">
@@ -50,7 +54,7 @@
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
-    <PackageReference Include="Microsoft.Rest.ClientRuntime" Version="2.3.21" />
+    <PackageReference Include="Microsoft.Rest.ClientRuntime" Version="2.3.2" />
     <PackageReference Include="NLog" Version="4.7.2" />
     <PackageReference Include="Svg" Version="3.1.1" />
     <PackageReference Include="System.Diagnostics.Tracing" Version="4.3.0" />

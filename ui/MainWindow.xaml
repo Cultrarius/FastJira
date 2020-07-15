@@ -40,33 +40,31 @@
                     <RowDefinition Height="100*"/>
                 </Grid.RowDefinitions>
                 <TextBlock Grid.Row="0" Text="Issue History" Margin="10,15,0,0" FontSize="18"/>
-                <ui:DelegatingScrollViewer Grid.Row="1" DockPanel.Dock="Left" Width="250">
-                    <ListBox x:Name="HistoryList" BorderThickness="0" KeyboardNavigation.TabNavigation="None" MouseWheel="MainWindow_MouseWheel">
-                        <ListBox.ItemTemplate>
-                            <DataTemplate>
-                                <Grid Margin="2,0,0,0" MouseWheel="MainWindow_MouseWheel">
-                                    <Grid.RowDefinitions>
-                                        <RowDefinition Height="20"/>
-                                        <RowDefinition MaxHeight="30"/>
-                                    </Grid.RowDefinitions>
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="20"/>
-                                        <ColumnDefinition Width="200"/>
-                                    </Grid.ColumnDefinitions>
-                                    <TextBlock Grid.Column="0" Grid.Row="0" Text="{Binding Hotkey}"/>
-                                    <StackPanel Orientation="Horizontal" Grid.Column="1" Grid.Row="0">
-                                        <Image Height="16" Width="16" Margin="0,0,3,0" Source="{Binding IssueTypeImage}"/>
-                                        <TextBlock Text="{Binding IssueKey}" FontWeight="Bold" VerticalAlignment="Center"/>
-                                    </StackPanel>
-                                    <TextBlock Grid.Column="1" Grid.Row="1" Text="{Binding IssueSummary}" FontSize="12" TextWrapping="Wrap" TextTrimming="CharacterEllipsis"/>
-                                </Grid>
-                            </DataTemplate>
-                        </ListBox.ItemTemplate>
-                        <ListBoxItem>(1) AADX-24123</ListBoxItem>
-                        <ListBoxItem>(2) AADX-6123</ListBoxItem>
-                        <ListBoxItem>(3) JALCI-12611</ListBoxItem>
-                    </ListBox>
-                </ui:DelegatingScrollViewer>
+                <ListBox x:Name="HistoryList" Grid.Row="1" DockPanel.Dock="Left" Width="260" BorderThickness="0" KeyboardNavigation.TabNavigation="None" ScrollViewer.VerticalScrollBarVisibility="Auto">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <Grid Margin="2,0,0,0" MouseWheel="MainWindow_MouseWheel">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="20"/>
+                                    <RowDefinition MaxHeight="30"/>
+                                </Grid.RowDefinitions>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="20"/>
+                                    <ColumnDefinition Width="200"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Grid.Row="0" Text="{Binding Hotkey}"/>
+                                <StackPanel Orientation="Horizontal" Grid.Column="1" Grid.Row="0">
+                                    <Image Height="16" Width="16" Margin="0,0,3,0" Source="{Binding IssueTypeImage}"/>
+                                    <TextBlock Text="{Binding IssueKey}" FontWeight="Bold" VerticalAlignment="Center"/>
+                                </StackPanel>
+                                <TextBlock Grid.Column="1" Grid.Row="1" Text="{Binding IssueSummary}" FontSize="12" TextWrapping="Wrap" TextTrimming="CharacterEllipsis"/>
+                            </Grid>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                    <ListBoxItem>(1) AADX-24123</ListBoxItem>
+                    <ListBoxItem>(2) AADX-6123</ListBoxItem>
+                    <ListBoxItem>(3) JALCI-12611</ListBoxItem>
+                </ListBox>
             </Grid>
 
             <Grid DockPanel.Dock="Top">
@@ -83,13 +81,19 @@
                 <TextBlock Margin="70,0,0,0" x:Name="UrlErrorText" Text="Something went wrong" VerticalAlignment="Center" Grid.Row="1" Foreground="Red" FontWeight="DemiBold" FontStyle="Normal" />
 
                 <StackPanel x:Name="toolBar" Height="50" Grid.Column="1" HorizontalAlignment="Right" VerticalAlignment="Top" Orientation="Horizontal" Grid.RowSpan="2">
-                    <Button x:Name="buttonBrowser" Margin="10" Background="White" TabIndex="2">
+                    <Button x:Name="buttonSearch" Margin="10,10,0,10" Background="White" TabIndex="2">
+                        <StackPanel Orientation="Horizontal">
+                            <Image Source="/Images/search.png" Margin="2"></Image>
+                            <TextBlock VerticalAlignment="Center" Margin="5">Search</TextBlock>
+                        </StackPanel>
+                    </Button>
+                    <Button x:Name="buttonBrowser" Margin="10" Background="White" TabIndex="3">
                         <StackPanel Orientation="Horizontal">
                             <Image Source="/Images/external-link.png" Margin="2"></Image>
                             <TextBlock VerticalAlignment="Center" Margin="5">Browser</TextBlock>
                         </StackPanel>
                     </Button>
-                    <Button x:Name="buttonSettings" Margin="0,10,20,10" Background="White" TabIndex="3">
+                    <Button x:Name="buttonSettings" Margin="0,10,20,10" Background="White" TabIndex="4">
                         <StackPanel Orientation="Horizontal">
                             <Image Source="/Images/sliders.png" Margin="2"></Image>
                             <TextBlock VerticalAlignment="Center" Margin="5">Settings</TextBlock>
@@ -184,6 +188,18 @@
                                     <TextBlock x:Name="DetailsReporter" TextTrimming="CharacterEllipsis" Width="165" VerticalAlignment="Center"/>
                                 </StackPanel>
                             </Grid>
+                            <Grid Margin="5,3,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="{StaticResource DetailsKeyWidth}" />
+                                    <ColumnDefinition Width="{StaticResource DetailsValueWidth}" />
+                                </Grid.ColumnDefinitions>
+
+                                <TextBlock Grid.Column="0" Text="Project:" VerticalAlignment="Center"/>
+                                <StackPanel Grid.Column="1" Orientation="Horizontal">
+                                    <Image x:Name="ProjectImage" Width="24" Height="24" Margin="0,0,5,0" />
+                                    <TextBlock x:Name="ProjectName" TextTrimming="CharacterEllipsis" Width="165" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </Grid>
                         </ItemsControl>
                     </GroupBox>
                     <GroupBox Name="SubtaskGroup" Header="Subtasks" Margin="0,20,0,0">
@@ -206,23 +222,28 @@
             </ui:DelegatingScrollViewer>
 
             <GroupBox DockPanel.Dock="Bottom" x:Name="AttachmentsGroup" Header="Attachments" Height="135">
-                <ui:DelegatingScrollViewer VerticalScrollBarVisibility="Hidden" HorizontalScrollBarVisibility="Auto">
-                    <ListBox x:Name="AttachmentList" BorderThickness="0" KeyboardNavigation.TabNavigation="None" MouseWheel="MainWindow_MouseWheel">
-                        <ListBox.ItemsPanel>
-                            <ItemsPanelTemplate>
-                                <StackPanel Orientation="Horizontal" MouseWheel="MainWindow_MouseWheel"/>
-                            </ItemsPanelTemplate>
-                        </ListBox.ItemsPanel>
-                        <ListBox.ItemTemplate>
-                            <DataTemplate>
-                                <StackPanel Width="100" MouseWheel="MainWindow_MouseWheel">
-                                    <Image Margin="0,0,0,0" MaxWidth="100" Height="70" Source="{Binding AttachmentThumbnail}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                    <TextBlock Text="{Binding AttachmentName}" FontSize="14" TextTrimming="CharacterEllipsis" HorizontalAlignment="Center" />
-                                </StackPanel>
-                            </DataTemplate>
-                        </ListBox.ItemTemplate>
-                    </ListBox>
-                </ui:DelegatingScrollViewer>
+                <ListBox x:Name="AttachmentList" BorderThickness="0" KeyboardNavigation.TabNavigation="None" MouseWheel="MainWindow_MouseWheel" ScrollViewer.VerticalScrollBarVisibility="Hidden" ScrollViewer.HorizontalScrollBarVisibility="Auto">
+                    <ListBox.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <StackPanel Orientation="Horizontal" MouseWheel="MainWindow_MouseWheel"/>
+                        </ItemsPanelTemplate>
+                    </ListBox.ItemsPanel>
+                    <ListBox.ContextMenu>
+                        <ContextMenu>
+                            <MenuItem Header="Open file" Click="OpenAttachment_MenuEntry"/>
+                            <MenuItem Header="Open download folder" Click="OpenAttachmentFolder_MenuEntry"/>
+                            <MenuItem Header="Copy file link" Click="CopyAttachmentLink_MenuEntry"/>
+                        </ContextMenu>
+                    </ListBox.ContextMenu>
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <StackPanel Width="100" MouseWheel="MainWindow_MouseWheel" ToolTip="{Binding AttachmentName}">
+                                <Image Margin="0,0,0,0" MaxWidth="100" Height="70" Source="{Binding AttachmentThumbnail}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                <TextBlock Text="{Binding AttachmentName}" FontSize="14" TextTrimming="CharacterEllipsis" HorizontalAlignment="Center" />
+                            </StackPanel>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
             </GroupBox>
 
             <Grid>

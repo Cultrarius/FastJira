@@ -143,5 +143,151 @@ namespace FastJira
                 }
             }
 
+            /// <summary>
+            /// Search for issues using JQL (GET)
+            /// </summary>
+            /// Searches for issues using [JQL](https://confluence.atlassian.com/x/egORLQ).
+            /// 
+            /// If the JQL query expression is too large to be encoded as a query
+            /// parameter, use the [POST](#api-rest-api-3-search-post) version of this
+            /// resource.
+            /// 
+            /// This operation can be accessed anonymously.
+            /// 
+            /// **[Permissions](#permissions) required:** Issues are included in the
+            /// response where the user has:
+            /// 
+            /// *  *Browse projects* [project
+            /// permission](https://confluence.atlassian.com/x/yodKLg) for the project
+            /// containing the issue.
+            /// *  If [issue-level security](https://confluence.atlassian.com/x/J4lKLg)
+            /// is configured, issue-level security permission to view the issue.
+            /// <param name='operations'>
+            /// The operations group for this extension method.
+            /// </param>
+            /// <param name='jql'>
+            /// The [JQL](https://confluence.atlassian.com/x/egORLQ) that defines the
+            /// search. Note:
+            /// 
+            /// *  If no JQL expression is provided, all issues are returned.
+            /// *  `username` and `userkey` cannot be used as search terms due to privacy
+            /// reasons. Use `accountId` instead.
+            /// *  If a user has hidden their email address in their user profile,
+            /// partial matches of the email address will not find the user. An exact
+            /// match is required.
+            /// </param>
+            /// <param name='startAt'>
+            /// The index of the first item to return in a page of results (page offset).
+            /// </param>
+            /// <param name='maxResults'>
+            /// The maximum number of items to return per page. To manage page size, Jira
+            /// may return fewer items per page where a large number of fields are
+            /// requested. The greatest number of items returned per page is achieved
+            /// when requesting `id` or `key` only.
+            /// </param>
+            /// <param name='fields'>
+            /// A list of fields to return for each issue, use it to retrieve a subset of
+            /// fields. This parameter accepts a comma-separated list. Expand options
+            /// include:
+            /// 
+            /// *  `*all` Returns all fields.
+            /// *  `*navigable` Returns navigable fields.
+            /// *  Any issue field, prefixed with a minus to exclude.
+            /// 
+            /// Examples:
+            /// 
+            /// *  `summary,comment` Returns only the summary and comments fields.
+            /// *  `-description` Returns all navigable (default) fields except
+            /// description.
+            /// *  `*all,-comment` Returns all fields except comments.
+            /// 
+            /// This parameter may be specified multiple times. For example,
+            /// `fields=field1,field2&amp;fields=field3`.
+            /// 
+            /// Note: All navigable fields are returned by default. This differs from [GET
+            /// issue](#api-rest-api-3-issue-issueIdOrKey-get) where the default is all
+            /// fields.
+            /// </param>
+            public static SearchResults SearchIssues(this IJiraAPI operations, string jql = default(string), int? startAt = default(int?), int? maxResults = 50, string fields = default(string))
+            {
+                return Task.Factory.StartNew(s => ((IJiraAPI)s).SearchIssuesAsync(jql, startAt, maxResults, fields), operations, CancellationToken.None, TaskCreationOptions.None, TaskScheduler.Default).Unwrap().GetAwaiter().GetResult();
+            }
+
+            /// <summary>
+            /// Search for issues using JQL (GET)
+            /// </summary>
+            /// Searches for issues using [JQL](https://confluence.atlassian.com/x/egORLQ).
+            /// 
+            /// If the JQL query expression is too large to be encoded as a query
+            /// parameter, use the [POST](#api-rest-api-3-search-post) version of this
+            /// resource.
+            /// 
+            /// This operation can be accessed anonymously.
+            /// 
+            /// **[Permissions](#permissions) required:** Issues are included in the
+            /// response where the user has:
+            /// 
+            /// *  *Browse projects* [project
+            /// permission](https://confluence.atlassian.com/x/yodKLg) for the project
+            /// containing the issue.
+            /// *  If [issue-level security](https://confluence.atlassian.com/x/J4lKLg)
+            /// is configured, issue-level security permission to view the issue.
+            /// <param name='operations'>
+            /// The operations group for this extension method.
+            /// </param>
+            /// <param name='jql'>
+            /// The [JQL](https://confluence.atlassian.com/x/egORLQ) that defines the
+            /// search. Note:
+            /// 
+            /// *  If no JQL expression is provided, all issues are returned.
+            /// *  `username` and `userkey` cannot be used as search terms due to privacy
+            /// reasons. Use `accountId` instead.
+            /// *  If a user has hidden their email address in their user profile,
+            /// partial matches of the email address will not find the user. An exact
+            /// match is required.
+            /// </param>
+            /// <param name='startAt'>
+            /// The index of the first item to return in a page of results (page offset).
+            /// </param>
+            /// <param name='maxResults'>
+            /// The maximum number of items to return per page. To manage page size, Jira
+            /// may return fewer items per page where a large number of fields are
+            /// requested. The greatest number of items returned per page is achieved
+            /// when requesting `id` or `key` only.
+            /// </param>
+            /// <param name='fields'>
+            /// A list of fields to return for each issue, use it to retrieve a subset of
+            /// fields. This parameter accepts a comma-separated list. Expand options
+            /// include:
+            /// 
+            /// *  `*all` Returns all fields.
+            /// *  `*navigable` Returns navigable fields.
+            /// *  Any issue field, prefixed with a minus to exclude.
+            /// 
+            /// Examples:
+            /// 
+            /// *  `summary,comment` Returns only the summary and comments fields.
+            /// *  `-description` Returns all navigable (default) fields except
+            /// description.
+            /// *  `*all,-comment` Returns all fields except comments.
+            /// 
+            /// This parameter may be specified multiple times. For example,
+            /// `fields=field1,field2&amp;fields=field3`.
+            /// 
+            /// Note: All navigable fields are returned by default. This differs from [GET
+            /// issue](#api-rest-api-3-issue-issueIdOrKey-get) where the default is all
+            /// fields.
+            /// </param>
+            /// <param name='cancellationToken'>
+            /// The cancellation token.
+            /// </param>
+            public static async Task<SearchResults> SearchIssuesAsync(this IJiraAPI operations, string jql = default(string), int? startAt = default(int?), int? maxResults = 50, string fields = default(string), CancellationToken cancellationToken = default(CancellationToken))
+            {
+                using (var _result = await operations.SearchIssuesWithHttpMessagesAsync(jql, startAt, maxResults, fields, null, cancellationToken).ConfigureAwait(false))
+                {
+                    return _result.Body;
+                }
+            }
+
     }
 }

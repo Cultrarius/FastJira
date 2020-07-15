@@ -2,8 +2,10 @@
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
+using System.IO;
 using System.Text.RegularExpressions;
 using System.Threading;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -18,10 +20,7 @@ namespace FastJira.ui
         public const string DateTimeUiFormat = "dd.MM.yyyy HH:mm";
     }
 
-    /// <summary>
-    /// Interaction logic for MainWindow.xaml
-    /// </summary>
-    public partial class MainWindow : Window
+    public partial class MainWindow
     {
         private static readonly NLog.Logger Logger = NLog.LogManager.GetCurrentClassLogger();
         private readonly DataVault _vault = new DataVault();
@@ -34,9 +33,10 @@ namespace FastJira.ui
         {
             _vault.InitFromDisk();
             _vault.ConfigureApi(_appConfig);
-
+            
             InitializeComponent();
             ConfigureUi();
+            StartSearchIndexing();
 
             RefreshDisplayedIssue();
             UrlTextbox.Text = _vault.DisplayedIssue?.Key ?? "";
@@ -55,27 +55,23 @@ namespace FastJira.ui
                 Logger.Error("Unable to set thread state for clipboard watcher");
             }
 
-            Logger.Debug("Application startup done.");
+            Logger.Info("Application startup done.");
         }
 
-        private void RefreshIssueHistory()
+        private void StartSearchIndexing()
         {
-            HistoryList.Items.Clear();
-            int k = 1;
-            foreach (Issue item in _vault.GetAllIssuesSorted())
-            {
-                string hotkey = k <= 9 ? "(" + k + ")" : "";
-                k++;
-                HistoryEntry entry = new HistoryEntry(hotkey, item.Key, item.Summary, _vault.GetWrappedImage(item.Type.IconUrl));
-                HistoryList.Items.Add(entry);
-
-                if (item.Key == _vault.DisplayedIssue.Key)
+            StatusText.Text = "Indexing issues for full-text search...";
+            ProgressBar.IsIndeterminate = true;
+            Task.Run(_vault.InitSearchEngine)
+                .ContinueWith(task => _vault.IndexServerForSearch(_appConfig), TaskScheduler.Default)
+                .ContinueWith(task => Dispatcher.Invoke(() =>
                 {
-                    _selectionActive = false;
-                    HistoryList.SelectedItem = entry;
-                    _selectionActive = true;
-                }
-            }
+                    if (_updateTicker == 0)
+                    {
+                        StatusText.Text = "";
+                        ProgressBar.IsIndeterminate = false;
+                    }
+                }), TaskScheduler.Default);
         }
 
         private void ConfigureUi()
@@ -85,6 +81,7 @@ namespace FastJira.ui
 
             buttonSettings.Command = new RelayCommand(SettingsCommand_Executed);
             buttonBrowser.Command = new RelayCommand(BrowserCommand_Executed);
+            buttonSearch.Command = new RelayCommand(ShowSearchDialog);
 
             UrlErrorText.Text = "";
             StatusText.Text = "";
@@ -96,6 +93,122 @@ namespace FastJira.ui
             HistoryList.SelectionChanged += HistoryList_SelectionChanged;
             UrlTextbox.KeyDown += UrlTextboxKeyDownHandler;
             DescriptionScrollView.ScrollChanged += DescriptionScrollView_ScrollChanged;
+            AttachmentList.MouseDoubleClick += AttachmentList_MouseDoubleClick;
+        }
+
+        private void AttachmentList_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+        {
+            if (AttachmentList.SelectedItem is AttachmentDetails details)
+            {
+                OpenAttachment(details);
+            }
+        }
+
+        private void OpenAttachment_MenuEntry(object sender, RoutedEventArgs e)
+        {
+            if (AttachmentList.SelectedItem is AttachmentDetails details)
+            {
+                OpenAttachment(details);
+            }
+        }
+
+        private void OpenAttachmentFolder_MenuEntry(object sender, RoutedEventArgs e)
+        {
+            if (AttachmentList.SelectedItem is AttachmentDetails details)
+            {
+                OpenAttachmentFolder(details);
+            }
+        }
+
+        private void CopyAttachmentLink_MenuEntry(object sender, RoutedEventArgs e)
+        {
+            if (AttachmentList.SelectedItem is AttachmentDetails details)
+            {
+                Clipboard.SetText(details.ContentUrl.OriginalString);
+            }
+        }
+
+        private void OpenAttachment(AttachmentDetails attachment)
+        {
+            ProgressBar.IsIndeterminate = true;
+            StatusText.Text = "Downloading attachment...";
+            Mouse.OverrideCursor = Cursors.Wait;
+
+            _updateTicker++;
+            BackgroundWorker worker = new BackgroundLoader(_updateTicker);
+            worker.DoWork += LoadAttachmentWorker_DoWork;
+            worker.RunWorkerCompleted += OpenAttachmentWorker_RunWorkerCompleted;
+            worker.RunWorkerAsync(attachment);
+        }
+
+        private void OpenAttachmentFolder(AttachmentDetails attachment)
+        {
+            ProgressBar.IsIndeterminate = true;
+            StatusText.Text = "Downloading attachment...";
+            Mouse.OverrideCursor = Cursors.Wait;
+
+            _updateTicker++;
+            BackgroundWorker worker = new BackgroundLoader(_updateTicker);
+            worker.DoWork += LoadAttachmentWorker_DoWork;
+            worker.RunWorkerCompleted += OpenAttachmentFolderWorker_RunWorkerCompleted;
+            worker.RunWorkerAsync(attachment);
+        }
+
+        void LoadAttachmentWorker_DoWork(object sender, DoWorkEventArgs e)
+        {
+            var details = (AttachmentDetails) e.Argument;
+
+            try
+            {
+                e.Result = _vault.LoadAttachment(details.IssueKey, details.ContentUrl);
+            }
+            catch (Exception ex)
+            {
+                ((BackgroundLoader)sender).Error = ex;
+                Logger.Error("Unable to load attachment {0}: {1}", details.AttachmentName, ex);
+            }
+        }
+
+        void OpenAttachmentWorker_RunWorkerCompleted(object sender, RunWorkerCompletedEventArgs e)
+        {
+            Mouse.OverrideCursor = null;
+            if (((BackgroundLoader) sender).WorkerTick == _updateTicker)
+            {
+                Exception error = ((BackgroundLoader)sender).Error;
+                if (error != null)
+                {
+                    UrlErrorText.Text = "Error! " + error.GetType().Name + ": " + error.Message;
+                }
+
+                ProgressBar.IsIndeterminate = false;
+                StatusText.Text = "";
+            }
+
+            if (e.Result is string filePath)
+            {
+                Process.Start(new ProcessStartInfo(Path.GetFullPath(filePath)) { UseShellExecute = true });
+            }
+        }
+
+        void OpenAttachmentFolderWorker_RunWorkerCompleted(object sender, RunWorkerCompletedEventArgs e)
+        {
+            Mouse.OverrideCursor = null;
+            if (((BackgroundLoader)sender).WorkerTick == _updateTicker)
+            {
+                Exception error = ((BackgroundLoader)sender).Error;
+                if (error != null)
+                {
+                    UrlErrorText.Text = "Error! " + error.GetType().Name + ": " + error.Message;
+                }
+
+                ProgressBar.IsIndeterminate = false;
+                StatusText.Text = "";
+            }
+
+            if (e.Result is string filePath)
+            {
+                Process.Start(new ProcessStartInfo("explorer.exe", "/e, /select, \"" + Path.GetFullPath(filePath) + "\"") { UseShellExecute = true });
+            }
         }
 
         private void MainWindow_MouseWheel(object sender, MouseWheelEventArgs e)
@@ -128,16 +241,7 @@ namespace FastJira.ui
             }
             if (e.Key == Key.F && (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control)
             {
-                if (_searchWindow == null)
-                {
-                    _searchWindow = new SearchWindow()
-                    {
-                        Vault = _vault,
-                        Owner = this
-                    };
-                    _searchWindow.SearchResultSelected += SearchWindow_SearchResultSelected;
-                }
-                _searchWindow.Display();
+                ShowSearchDialog();
                 e.Handled = true;
             }
 
@@ -156,13 +260,26 @@ namespace FastJira.ui
             }
         }
 
+        private void ShowSearchDialog(object parameter = null)
+        {
+            if (_searchWindow == null)
+            {
+                _searchWindow = new SearchWindow()
+                {
+                    Vault = _vault,
+                    Owner = this
+                };
+                _searchWindow.SearchResultSelected += SearchWindow_SearchResultSelected;
+            }
+
+            _searchWindow.Display();
+        }
+
         private void SearchWindow_SearchResultSelected(string selectedIssueKey)
         {
-            if (!_vault.HasIssueCached(selectedIssueKey)) return;
-            _vault.DisplayedIssue = _vault.GetCachedIssue(selectedIssueKey);
             UrlTextbox.Text = selectedIssueKey;
-            RefreshDisplayedIssue();
             Focus();
+            IssueDisplayRequested(selectedIssueKey);
         }
 
         private void HistoryList_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -179,7 +296,27 @@ namespace FastJira.ui
             }
         }
 
-        private string FormatTime(DateTime? input)
+        private void RefreshIssueHistory()
+        {
+            HistoryList.Items.Clear();
+            int k = 1;
+            foreach (Issue item in _vault.GetAllIssuesSorted())
+            {
+                string hotkey = k <= 9 ? "(" + k + ")" : "";
+                k++;
+                HistoryEntry entry = new HistoryEntry(hotkey, item.Key, item.Summary, _vault.GetWrappedImage(item.Type.IconUrl));
+                HistoryList.Items.Add(entry);
+
+                if (item.Key == _vault.DisplayedIssue.Key)
+                {
+                    _selectionActive = false;
+                    HistoryList.SelectedItem = entry;
+                    _selectionActive = true;
+                }
+            }
+        }
+
+        private static string FormatTime(DateTime? input)
         {
             if (!input.HasValue)
             {
@@ -228,12 +365,14 @@ namespace FastJira.ui
             DetailsType.Text = _vault.DisplayedIssue?.Type?.Name;
             DetailsAssignee.Text = _vault.DisplayedIssue?.Assignee?.DisplayName;
             DetailsReporter.Text = _vault.DisplayedIssue?.Reporter?.DisplayName;
+            ProjectName.Text = _vault.DisplayedIssue?.Project?.Name;
             DetailsCreated.Text = FormatTime(_vault.DisplayedIssue?.Created);
             DetailsUpdated.Text = FormatTime(_vault.DisplayedIssue?.Updated);
 
             UpdateImage(TypeImage, _vault.DisplayedIssue?.Type?.IconUrl);
             UpdateImage(AssigneeImage, _vault.DisplayedIssue?.Assignee?.AvatarUrl);
             UpdateImage(ReporterImage, _vault.DisplayedIssue?.Reporter?.AvatarUrl);
+            UpdateImage(ProjectImage, _vault.DisplayedIssue?.Project?.AvatarUrl);
 
             RefreshComments();
             RefreshAttachments();
@@ -276,6 +415,8 @@ namespace FastJira.ui
                     {
                         AttachmentName = attachment.FileName,
                         Id = attachment.Id,
+                        ContentUrl = new Uri(attachment.Content),
+                        IssueKey = _vault.DisplayedIssue.Key,
                         AttachmentThumbnail = source
                     };
                     AttachmentList.Items.Add(details);
@@ -391,19 +532,19 @@ namespace FastJira.ui
             StatusText.Text = "Loading issue " + issueName + "...";
 
             _updateTicker++;
-            BackgroundWorker worker = new IssueLoader(_updateTicker);
+            BackgroundWorker worker = new BackgroundLoader(_updateTicker);
             worker.DoWork += LoadIssueWorker_DoWork;
             worker.RunWorkerCompleted += LoadIssueWorker_RunWorkerCompleted;
             worker.ProgressChanged += LoadIssueWorker_IntermediateResult;
             worker.RunWorkerAsync(issueName);
         }
 
-        private class IssueLoader : BackgroundWorker
+        private class BackgroundLoader : BackgroundWorker
         {
             public readonly int WorkerTick;
             public Exception Error;
 
-            public IssueLoader(int updateTicker)
+            public BackgroundLoader(int updateTicker)
             {
                 WorkerTick = updateTicker;
                 WorkerReportsProgress = true;
@@ -429,7 +570,7 @@ namespace FastJira.ui
             }
             catch (Exception ex)
             {
-                ((IssueLoader) sender).Error = ex;
+                ((BackgroundLoader) sender).Error = ex;
                 Logger.Error("Unable to load issue {0}: {1}", issueId, ex);
             }
         }
@@ -442,9 +583,9 @@ namespace FastJira.ui
 
         void LoadIssueWorker_RunWorkerCompleted(object sender, RunWorkerCompletedEventArgs e)
         {
-            if (((IssueLoader) sender).WorkerTick != _updateTicker) return;
+            if (((BackgroundLoader) sender).WorkerTick != _updateTicker) return;
 
-            Exception error = ((IssueLoader) sender).Error;
+            Exception error = ((BackgroundLoader) sender).Error;
             if (error != null)
             {
                 UrlErrorText.Text = "Error! " + error.GetType().Name + ": " + error.Message;
@@ -547,6 +688,8 @@ namespace FastJira.ui
     {
         public string Id { get; set; }
         public string AttachmentName { get; set; }
+        public string IssueKey { get; set; }
+        public Uri ContentUrl { get; set; }
         public ImageSource AttachmentThumbnail { get; set; }
     }
 }
