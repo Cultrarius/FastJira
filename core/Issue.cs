@@ -178,16 +178,6 @@ namespace FastJira.core
         {
             return Key.GetHashCode();
         }
-
-        public static bool operator ==(Issue left, Issue right)
-        {
-            return left.Equals(right);
-        }
-
-        public static bool operator !=(Issue left, Issue right)
-        {
-            return !(left == right);
-        }
     }
 
     public class Person
